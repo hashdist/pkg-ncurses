@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2007,2009 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2011,2013 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -41,7 +41,7 @@
 
 #include <curses.priv.h>
 
-MODULE_ID("$Id: lib_instr.c,v 1.17 2009/10/24 22:55:45 tom Exp $")
+MODULE_ID("$Id: lib_instr.c,v 1.20 2013/01/20 01:58:13 tom Exp $")
 
 NCURSES_EXPORT(int)
 winnstr(WINDOW *win, char *str, int n)
@@ -78,11 +78,15 @@ winnstr(WINDOW *win, char *str, int n)
 		    if (getcchar(cell, wch, &attrs, &pair, 0) == OK) {
 
 			init_mb(state);
-			n3 = wcstombs(0, wch, 0);
+			n3 = wcstombs(0, wch, (size_t) 0);
 			if (!isEILSEQ(n3) && (n3 != 0)) {
-			    if (((int) n3 + i) > n) {
+			    size_t need = n3 + 10 + (size_t) i;
+			    int have = (int) n3 + i;
+
+			    /* check for loop-done as well as overflow */
+			    if (have > n || (int) need <= 0) {
 				done = TRUE;
-			    } else if ((tmp = typeCalloc(char, n3 + 10)) == 0) {
+			    } else if ((tmp = typeCalloc(char, need)) == 0) {
 				done = TRUE;
 			    } else {
 				init_mb(state);

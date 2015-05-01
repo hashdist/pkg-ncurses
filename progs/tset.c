@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2010 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -119,7 +119,7 @@ char *ttyname(int fd);
 #include <dump_entry.h>
 #include <transform.h>
 
-MODULE_ID("$Id: tset.c,v 1.82 2010/05/01 21:42:46 tom Exp $")
+MODULE_ID("$Id: tset.c,v 1.91 2013/03/23 21:38:08 tom Exp $")
 
 /*
  * SCO defines TIOCGSIZE and the corresponding struct.  Other systems (SunOS,
@@ -148,6 +148,10 @@ extern char **environ;
 #undef CTRL
 #define CTRL(x)	((x) & 0x1f)
 
+static void failed(const char *) GCC_NORETURN;
+static void exit_error(void) GCC_NORETURN;
+static void err(const char *,...) GCC_NORETURN;
+
 const char *_nc_progname = "tset";
 
 static TTY mode, oldmode, original;
@@ -160,7 +164,10 @@ static bool isreset = FALSE;	/* invoked as reset */
 static int terasechar = -1;	/* new erase character */
 static int intrchar = -1;	/* new interrupt character */
 static int tkillchar = -1;	/* new kill character */
+
+#if HAVE_SIZECHANGE
 static int tlines, tcolumns;	/* window size */
+#endif
 
 #define LOWERCASE(c) ((isalpha(UChar(c)) && isupper(UChar(c))) ? tolower(UChar(c)) : (c))
 
@@ -203,13 +210,13 @@ static void
 failed(const char *msg)
 {
     char temp[BUFSIZ];
-    unsigned len = strlen(_nc_progname) + 2;
+    size_t len = strlen(_nc_progname) + 2;
 
     if ((int) len < (int) sizeof(temp) - 12) {
-	strcpy(temp, _nc_progname);
-	strcat(temp, ": ");
+	_nc_STRCPY(temp, _nc_progname, sizeof(temp));
+	_nc_STRCAT(temp, ": ", sizeof(temp));
     } else {
-	strcpy(temp, "tset: ");
+	_nc_STRCPY(temp, "tset: ", sizeof(temp));
     }
     perror(strncat(temp, msg, sizeof(temp) - strlen(temp) - 2));
     exit_error();
@@ -467,9 +474,6 @@ add_mapping(const char *port, char *arg)
 	mapp->speed = tbaudrate(p);
     }
 
-    if (arg == (char *) 0)	/* Non-optional type. */
-	goto badmopt;
-
     mapp->type = arg;
 
     /* Terminate porttype, if specified. */
@@ -527,19 +531,19 @@ mapped(const char *type)
 		match = TRUE;
 		break;
 	    case EQ:
-		match = (ospeed == mapp->speed);
+		match = ((int) ospeed == mapp->speed);
 		break;
 	    case GE:
-		match = (ospeed >= mapp->speed);
+		match = ((int) ospeed >= mapp->speed);
 		break;
 	    case GT:
-		match = (ospeed > mapp->speed);
+		match = ((int) ospeed > mapp->speed);
 		break;
 	    case LE:
-		match = (ospeed <= mapp->speed);
+		match = ((int) ospeed <= mapp->speed);
 		break;
 	    case LT:
-		match = (ospeed < mapp->speed);
+		match = ((int) ospeed < mapp->speed);
 		break;
 	    default:
 		match = FALSE;
@@ -1043,11 +1047,18 @@ set_tabs(void)
 {
     if (set_tab && clear_all_tabs) {
 	int c;
+	int lim =
+#if HAVE_SIZECHANGE
+	tcolumns
+#else
+	columns
+#endif
+	 ;
 
 	(void) putc('\r', stderr);	/* Force to left margin. */
 	tputs(clear_all_tabs, 0, outc);
 
-	for (c = 8; c < tcolumns; c += 8) {
+	for (c = 8; c < lim; c += 8) {
 	    /* Get to the right column.  In BSD tset, this
 	     * used to try a bunch of half-clever things
 	     * with cup and hpa, for an average saving of
@@ -1273,10 +1284,10 @@ main(int argc, char **argv)
     (void) get_termcap_entry(*argv);
 
     if (!noset) {
+#if HAVE_SIZECHANGE
 	tcolumns = columns;
 	tlines = lines;
 
-#if HAVE_SIZECHANGE
 	if (opt_w) {
 	    STRUCT_WINSIZE win;
 	    /* Set window size if not set already */

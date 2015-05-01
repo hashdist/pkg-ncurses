@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 2005-2010,2011 Free Software Foundation, Inc.              *
+ * Copyright (c) 2005-2011,2012 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -26,7 +26,7 @@
  * authorization.                                                           *
  ****************************************************************************/
 /*
- * $Id: demo_menus.c,v 1.32 2011/01/15 20:02:47 tom Exp $
+ * $Id: demo_menus.c,v 1.37 2012/11/18 00:18:54 tom Exp $
  *
  * Demonstrate a variety of functions from the menu library.
  * Thomas Dickey - 2005/4/9
@@ -108,18 +108,6 @@ static MENU *mpFile;
 static MENU *mpSelect;
 
 static bool loaded_file = FALSE;
-
-#if !HAVE_STRDUP
-#define strdup my_strdup
-static char *
-strdup(char *s)
-{
-    char *p = typeMalloc(char, strlen(s) + 1);
-    if (p)
-	strcpy(p, s);
-    return (p);
-}
-#endif /* not HAVE_STRDUP */
 
 /* Common function to allow ^T to toggle trace-mode in the middle of a test
  * so that trace-files can be made smaller.
@@ -225,8 +213,8 @@ menu_create(ITEM ** items, int count, int ncols, MenuNo number)
     result = new_menu(items);
 
     if (has_colors()) {
-	set_menu_fore(result, COLOR_PAIR(1));
-	set_menu_back(result, COLOR_PAIR(2));
+	set_menu_fore(result, (chtype) COLOR_PAIR(1));
+	set_menu_back(result, (chtype) COLOR_PAIR(2));
     }
 
     set_menu_format(result, maxrow, maxcol);
@@ -281,12 +269,15 @@ menu_destroy(MENU * m)
 		free((char *) blob);
 	    }
 	    free(items);
+	    items = 0;
 	}
 #ifdef TRACE
 	if ((count > 0) && (m == mpTrace)) {
 	    ITEM **ip = items;
-	    while (*ip)
-		free(*ip++);
+	    if (ip != 0) {
+		while (*ip)
+		    free(*ip++);
+	    }
 	}
 #endif
     }
@@ -398,6 +389,8 @@ build_select_menu(MenuNo number, char *filename)
 		}
 		loaded_file = TRUE;
 	    }
+	    if (ap == 0)
+		free(items);
 	}
     }
     if (ap == 0) {
@@ -831,7 +824,7 @@ usage(void)
 {
     static const char *const tbl[] =
     {
-	"Usage: demo_menus [options]"
+	"Usage: demo_menus [options] [menu-file]"
 	,""
 	,"Options:"
 #if HAVE_RIPOFFLINE
@@ -867,7 +860,7 @@ main(int argc, char *argv[])
 #endif /* HAVE_RIPOFFLINE */
 #ifdef TRACE
 	case 't':
-	    trace(strtoul(optarg, 0, 0));
+	    trace((unsigned) strtoul(optarg, 0, 0));
 	    break;
 #endif
 	default:

@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2000,2007 Free Software Foundation, Inc.              *
+ * Copyright (c) 2013 Free Software Foundation, Inc.                        *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -25,45 +25,124 @@
  * sale, use or other dealings in this Software without prior written       *
  * authorization.                                                           *
  ****************************************************************************/
+/*
+ * $Id: test_vid_puts.c,v 1.4 2013/01/13 01:04:14 tom Exp $
+ *
+ * Demonstrate the vid_puts and vid_attr functions.
+ * Thomas Dickey - 2013/01/12
+ */
 
-#include <curses.priv.h>
+#define USE_TINFO
+#include <test.priv.h>
 
-MODULE_ID("$Id: memmove.c,v 1.5 2007/08/11 17:12:43 tom Exp $")
+#if USE_WIDEC_SUPPORT && HAVE_SETUPTERM
 
-/****************************************************************************
- *  Author: Thomas E. Dickey <dickey@clark.net> 1998                        *
- ****************************************************************************/
+#define valid(s) ((s != 0) && s != (char *)-1)
 
-#if USE_MY_MEMMOVE
-#define DST ((char *)s1)
-#define SRC ((const char *)s2)
-NCURSES_EXPORT(void *)
-_nc_memmove(void *s1, const void *s2, size_t n)
+static FILE *my_fp;
+static bool p_opt = FALSE;
+
+static
+TPUTS_PROTO(outc, c)
 {
-    if (n != 0) {
-	if ((DST + n > SRC) && (SRC + n > DST)) {
-	    static char *bfr;
-	    static size_t length;
-	    register size_t j;
-	    if (length < n) {
-		length = (n * 3) / 2;
-		bfr = typeRealloc(char, length, bfr);
-	    }
-	    for (j = 0; j < n; j++)
-		bfr[j] = SRC[j];
-	    s2 = bfr;
-	}
-	while (n-- != 0)
-	    DST[n] = SRC[n];
-    }
-    return s1;
+    int rc = c;
+
+    rc = putc(c, my_fp);
+    TPUTS_RETURN(rc);
 }
-#else
-extern
-NCURSES_EXPORT(void)
-_nc_memmove(void);		/* quiet's gcc warning */
-NCURSES_EXPORT(void)
-_nc_memmove(void)
+
+static bool
+outs(char *s)
 {
-}				/* nonempty for strict ANSI compilers */
-#endif /* USE_MY_MEMMOVE */
+    if (valid(s)) {
+	tputs(s, 1, outc);
+	return TRUE;
+    }
+    return FALSE;
+}
+
+static void
+cleanup(void)
+{
+    outs(exit_attribute_mode);
+    if (!outs(orig_colors))
+	outs(orig_pair);
+    outs(cursor_normal);
+}
+
+static void
+change_attr(chtype attr)
+{
+    if (p_opt) {
+	vid_puts(attr, (short) 0, (void *) 0, outc);
+    } else {
+	vid_attr(attr, (short) 0, (void *) 0);
+    }
+}
+
+static void
+test_vid_puts(void)
+{
+    fprintf(my_fp, "Name: ");
+    change_attr(A_BOLD);
+    fputs("Bold", my_fp);
+    change_attr(A_REVERSE);
+    fputs(" Reverse", my_fp);
+    change_attr(A_NORMAL);
+    fputs("\n", my_fp);
+}
+
+static void
+usage(void)
+{
+    static const char *tbl[] =
+    {
+	"Usage: test_vid_puts [options]"
+	,""
+	,"Options:"
+	,"  -e      use stderr (default stdout)"
+	,"  -p      use vid_puts (default vid_attr)"
+    };
+    unsigned n;
+    for (n = 0; n < SIZEOF(tbl); ++n)
+	fprintf(stderr, "%s\n", tbl[n]);
+    ExitProgram(EXIT_FAILURE);
+}
+
+int
+main(int argc GCC_UNUSED, char *argv[]GCC_UNUSED)
+{
+    int ch;
+
+    my_fp = stdout;
+
+    while ((ch = getopt(argc, argv, "ep")) != -1) {
+	switch (ch) {
+	case 'e':
+	    my_fp = stderr;
+	    break;
+	case 'p':
+	    p_opt = TRUE;
+	    break;
+	default:
+	    usage();
+	    break;
+	}
+    }
+    if (optind < argc)
+	usage();
+
+    setupterm((char *) 0, 1, (int *) 0);
+    test_vid_puts();
+    cleanup();
+    ExitProgram(EXIT_SUCCESS);
+}
+
+#else
+int
+main(void)
+{
+    printf("This program requires the wide-ncurses terminfo library\n");
+    ExitProgram(EXIT_FAILURE);
+}
+#endif

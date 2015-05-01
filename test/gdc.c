@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2010 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -33,7 +33,7 @@
  * modified 10-18-89 for curses (jrl)
  * 10-18-89 added signal handling
  *
- * $Id: gdc.c,v 1.34 2010/11/13 21:01:23 tom Exp $
+ * $Id: gdc.c,v 1.37 2013/04/27 19:50:17 tom Exp $
  */
 
 #include <test.priv.h>
@@ -60,7 +60,7 @@ static int sigtermed = 0;
 static bool redirected = FALSE;
 static bool hascolor = FALSE;
 
-static RETSIGTYPE
+static void
 sighndl(int signo)
 {
     signal(signo, sighndl);
@@ -78,7 +78,7 @@ drawbox(bool scrolling)
     int n;
 
     if (hascolor)
-	(void) attrset(COLOR_PAIR(PAIR_FRAMES));
+	(void) attrset((attr_t) COLOR_PAIR(PAIR_FRAMES));
 
     MvAddCh(YBASE - 1, XBASE - 1, ACS_ULCORNER);
     hline(ACS_HLINE, XLENGTH);
@@ -102,7 +102,7 @@ drawbox(bool scrolling)
     vline(ACS_VLINE, YDEPTH);
 
     if (hascolor)
-	(void) attrset(COLOR_PAIR(PAIR_OTHERS));
+	(void) attrset((attr_t) COLOR_PAIR(PAIR_OTHERS));
 }
 
 static void
@@ -110,13 +110,13 @@ standt(int on)
 {
     if (on) {
 	if (hascolor) {
-	    attron(COLOR_PAIR(PAIR_DIGITS));
+	    attron((attr_t) COLOR_PAIR(PAIR_DIGITS));
 	} else {
 	    attron(A_STANDOUT);
 	}
     } else {
 	if (hascolor) {
-	    attron(COLOR_PAIR(PAIR_OTHERS));
+	    attron((attr_t) COLOR_PAIR(PAIR_OTHERS));
 	} else {
 	    attroff(A_STANDOUT);
 	}
@@ -220,7 +220,7 @@ main(int argc, char *argv[])
 	init_pair(PAIR_DIGITS, COLOR_BLACK, COLOR_RED);
 	init_pair(PAIR_OTHERS, COLOR_RED, bg);
 	init_pair(PAIR_FRAMES, COLOR_WHITE, bg);
-	(void) attrset(COLOR_PAIR(PAIR_OTHERS));
+	(void) attrset((attr_t) COLOR_PAIR(PAIR_OTHERS));
     }
 
   restart:
@@ -231,7 +231,7 @@ main(int argc, char *argv[])
     drawbox(FALSE);
 
     do {
-	char buf[30];
+	char buf[40];
 
 	time(&now);
 	tm = localtime(&now);
@@ -293,7 +293,7 @@ main(int argc, char *argv[])
 	}
 
 	/* this depends on the detailed format of ctime(3) */
-	(void) strcpy(buf, ctime(&now));
+	(void) strncpy(buf, ctime(&now), 30);
 	(void) strcpy(buf + 10, buf + 19);
 	MvAddStr(16, 30, buf);
 

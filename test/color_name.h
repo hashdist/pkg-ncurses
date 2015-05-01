@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998,2000 Free Software Foundation, Inc.                   *
+ * Copyright (c) 2011,2012 Free Software Foundation, Inc.                   *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -25,37 +25,79 @@
  * sale, use or other dealings in this Software without prior written       *
  * authorization.                                                           *
  ****************************************************************************/
-
 /*
- * $Id: tty_input.h,v 1.2 2000/12/10 02:26:51 tom Exp $
+ * $Id: color_name.h,v 1.4 2012/11/18 01:59:32 tom Exp $
  */
 
-#ifndef TTY_INPUT_H
-#define TTY_INPUT_H 1
+#ifndef __COLORNAME_H
+#define __COLORNAME_H 1
 
-extern NCURSES_EXPORT(bool) _nc_tty_mouse_mask (mmask_t);
-extern NCURSES_EXPORT(bool) _nc_tty_pending (void);
-extern NCURSES_EXPORT(int)  _nc_tty_next_event (int);
-extern NCURSES_EXPORT(void) _nc_tty_flags_changed (void);
-extern NCURSES_EXPORT(void) _nc_tty_flush (void);
-extern NCURSES_EXPORT(void) _nc_tty_input_resume (void);
-extern NCURSES_EXPORT(void) _nc_tty_input_suspend (void);
+#ifndef __TEST_PRIV_H
+#include <test.priv.h>
+#endif
 
-struct tty_input_data {
-	int             _ifd;           /* input file ptr for screen        */
-	int             _keypad_xmit;   /* current terminal state           */
-	int             _meta_on;       /* current terminal state           */
-
-	/*
-	 * These are the data that support the mouse interface.
-	 */
-	bool            (*_mouse_event) (SCREEN *);
-	bool            (*_mouse_inline)(SCREEN *);
-	bool            (*_mouse_parse) (int);
-	void            (*_mouse_resume)(SCREEN *);
-	void            (*_mouse_wrap)  (SCREEN *);
-	int             _mouse_fd;      /* file-descriptor, if any */
-	int             mousetype;
+static NCURSES_CONST char *the_color_names[] =
+{
+    "black",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "BLACK",
+    "RED",
+    "GREEN",
+    "YELLOW",
+    "BLUE",
+    "MAGENTA",
+    "CYAN",
+    "WHITE"
 };
 
-#endif /* TTY_INPUT_H */
+#ifdef NEED_COLOR_CODE
+static int
+color_code(const char *color)
+{
+    int result = 0;
+    char *endp = 0;
+    size_t n;
+
+    if ((result = (int) strtol(color, &endp, 0)) >= 0
+	&& (endp == 0 || *endp == 0)) {
+	;
+    } else if (!strcmp(color, "default")) {
+	result = -1;
+    } else {
+	for (n = 0; n < SIZEOF(the_color_names); ++n) {
+	    if (!strcmp(the_color_names[n], color)) {
+		result = (int) n;
+		break;
+	    }
+	}
+    }
+    return result;
+}
+#endif /* NEED_COLOR_NAME */
+
+#ifdef NEED_COLOR_NAME
+static const char *
+color_name(int color)
+{
+    static char temp[20];
+    const char *result = 0;
+
+    if (color >= (int) SIZEOF(the_color_names)) {
+	sprintf(temp, "%d", color);
+	result = temp;
+    } else if (color < 0) {
+	result = "default";
+    } else {
+	result = the_color_names[color];
+    }
+    return result;
+}
+#endif /* NEED_COLOR_NAME */
+
+#endif /* __COLORNAME_H */
