@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -47,7 +47,7 @@
 #define CUR SP_TERMTYPE
 #endif
 
-MODULE_ID("$Id: lib_set_term.c,v 1.147 2012/12/22 21:30:04 tom Exp $")
+MODULE_ID("$Id: lib_set_term.c,v 1.150 2014/11/01 12:30:47 tom Exp $")
 
 #ifdef USE_TERM_DRIVER
 #define MaxColors      InfoOf(sp).maxcolors
@@ -242,8 +242,8 @@ no_mouse_wrap(SCREEN *sp GCC_UNUSED)
 }
 
 #if NCURSES_EXT_FUNCS && USE_COLORFGBG
-static char *
-extract_fgbg(char *src, int *result)
+static const char *
+extract_fgbg(const char *src, int *result)
 {
     char *dst = 0;
     long value = strtol(src, &dst, 0);
@@ -351,7 +351,7 @@ NCURSES_SP_NAME(_nc_setupscreen) (
 	slines = 1;
 	SET_LINES(slines);
 #ifdef USE_TERM_DRIVER
-	CallDriver(sp, setfilter);
+	CallDriver(sp, td_setfilter);
 #else
 	clear_screen = 0;
 	cursor_down = parm_down_cursor = 0;
@@ -442,7 +442,7 @@ NCURSES_SP_NAME(_nc_setupscreen) (
      * decide later if it is worth having default attributes as well.
      */
     if (getenv("COLORFGBG") != 0) {
-	char *p = getenv("COLORFGBG");
+	const char *p = getenv("COLORFGBG");
 	TR(TRACE_CHARPUT | TRACE_MOVE, ("decoding COLORFGBG %s", p));
 	p = extract_fgbg(p, &(sp->_default_fg));
 	p = extract_fgbg(p, &(sp->_default_bg));
@@ -507,16 +507,7 @@ NCURSES_SP_NAME(_nc_setupscreen) (
 
     if (magic_cookie_glitch > 0) {	/* tvi, wyse */
 
-	sp->_xmc_triggers = sp->_ok_attributes & (
-						     A_STANDOUT |
-						     A_UNDERLINE |
-						     A_REVERSE |
-						     A_BLINK |
-						     A_DIM |
-						     A_BOLD |
-						     A_INVIS |
-						     A_PROTECT
-	    );
+	sp->_xmc_triggers = sp->_ok_attributes & XMC_CONFLICT;
 #if 0
 	/*
 	 * We "should" treat colors as an attribute.  The wyse350 (and its

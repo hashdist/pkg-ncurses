@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -47,7 +47,7 @@
 
 #include <tic.h>
 
-MODULE_ID("$Id: comp_parse.c,v 1.86 2012/10/27 21:48:03 tom Exp $")
+MODULE_ID("$Id: comp_parse.c,v 1.90 2013/08/31 15:22:31 tom Exp $")
 
 static void sanity_check2(TERMTYPE *, bool);
 NCURSES_IMPEXP void NCURSES_API(*_nc_check_termtype2) (TERMTYPE *, bool) = sanity_check2;
@@ -90,7 +90,7 @@ force_bar(char *dst, char *src)
 }
 #define ForceBar(dst, src) ((strchr(src, '|') == 0) ? force_bar(dst, src) : src)
 
-#if USE_TERMCAP && NCURSES_XNAMES
+#if NCURSES_USE_TERMCAP && NCURSES_XNAMES
 static char *
 skip_index(char *name)
 {
@@ -113,7 +113,7 @@ check_collisions(char *n1, char *n2, int counter)
     n1 = ForceBar(nc1, n1);
     n2 = ForceBar(nc2, n2);
 
-#if USE_TERMCAP && NCURSES_XNAMES
+#if NCURSES_USE_TERMCAP && NCURSES_XNAMES
     if ((_nc_syntax == SYN_TERMCAP) && _nc_user_definable) {
 	n1 = skip_index(n1);
 	n2 = skip_index(n2);
@@ -162,18 +162,15 @@ name_ending(char *name)
 static bool
 remove_collision(char *n1, char *n2)
 {
-    char *p1 = n1;
     char *p2 = n2;
     char *pstart, *qstart, *pend, *qend;
     bool removed = FALSE;
 
-#if USE_TERMCAP && NCURSES_XNAMES
+#if NCURSES_USE_TERMCAP && NCURSES_XNAMES
     if ((_nc_syntax == SYN_TERMCAP) && _nc_user_definable) {
-	p1 = n1 = skip_index(n1);
+	n1 = skip_index(n1);
 	p2 = n2 = skip_index(n2);
     }
-#else
-    (void) p1;
 #endif
 
     for (pstart = n1; (pend = name_ending(pstart)); pstart = next_name(pend)) {
@@ -486,12 +483,12 @@ _nc_resolve_uses2(bool fullresolve, bool literal)
 		    memset(&fake_tm, 0, sizeof(fake_tm));
 		    fake_sp._term = &fake_tm;
 		    fake_tm.type = qp->tterm;
-		    SP = &fake_sp;
+		    _nc_set_screen(&fake_sp);
 		    set_curterm(&fake_tm);
 
 		    _nc_check_termtype2(&qp->tterm, literal);
 
-		    SP = save_SP;
+		    _nc_set_screen(save_SP);
 		    set_curterm(save_tm);
 		} else {
 		    fixup_acsc(&qp->tterm, literal);
@@ -550,6 +547,7 @@ sanity_check2(TERMTYPE *tp, bool literal)
 #endif /* __UNUSED__ */
 	PAIRED(enter_standout_mode, exit_standout_mode);
 	PAIRED(enter_underline_mode, exit_underline_mode);
+	PAIRED(enter_italics_mode, exit_italics_mode);
     }
 
     /* we do this check/fix in postprocess_termcap(), but some packagers

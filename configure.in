@@ -1,5 +1,5 @@
 dnl***************************************************************************
-dnl Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+dnl Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
 dnl                                                                          *
 dnl Permission is hereby granted, free of charge, to any person obtaining a  *
 dnl copy of this software and associated documentation files (the            *
@@ -28,19 +28,20 @@ dnl***************************************************************************
 dnl
 dnl Author: Thomas E. Dickey 1995-on
 dnl
-dnl $Id: configure.in,v 1.565 2013/04/27 19:37:40 tom Exp $
+dnl $Id: configure.in,v 1.590 2014/11/15 01:35:36 tom Exp $
 dnl Process this file with autoconf to produce a configure script.
 dnl
 dnl See http://invisible-island.net/autoconf/ for additional information.
 dnl
 dnl ---------------------------------------------------------------------------
 AC_PREREQ(2.52.20030208)
-AC_REVISION($Revision: 1.565 $)
+AC_REVISION($Revision: 1.590 $)
 AC_INIT(ncurses/base/lib_initscr.c)
 AC_CONFIG_HEADER(include/ncurses_cfg.h:include/ncurses_cfg.hin)
 
 CF_TOP_BUILDDIR
 CF_SUBST_NCURSES_VERSION
+CF_VERSION_INFO(NCURSES,ncurses)
 
 CF_WITH_REL_VERSION(NCURSES)
 CF_WITH_ABI_VERSION
@@ -92,6 +93,37 @@ else
 		cf_with_cxx=no; CXX=""; GXX="";])dnl
 	AC_PROG_CXX
 	popdef([AC_MSG_ERROR])dnl
+
+	AC_LANG_PUSH(C++)
+	if test "x$cf_with_cxx" != xno
+	then
+		# Several of the C++ configurations do not work, particularly when
+		# cross-compiling (20140913 -TD)
+		AC_MSG_CHECKING(if $CXX works)
+
+		save_CPPFLAGS="$CPPFLAGS"
+		eval cf_includedir=${includedir}
+		CPPFLAGS="$CPPFLAGS -I${cf_includedir}"
+		AC_TRY_COMPILE([
+#include <stdlib.h>
+#include <stdio.h>
+],
+		[
+		printf("Hello world!\n")
+		],
+		[cf_cxx_works=yes],
+		[cf_cxx_works=no])
+		CPPFLAGS="$save_CPPFLAGS"
+
+		AC_MSG_RESULT($cf_cxx_works)
+		if test "x$cf_cxx_works" = xno
+		then
+			AC_MSG_WARN([Ignore $CXX, since it cannot compile hello-world.])
+			cf_with_cxx=no; CXX=""; GXX="";
+		fi
+	fi
+	AC_LANG_POP
+
 	# autoconf 2.5x removed the error (hardcoding it to g++, or just blank)
 	if test "$CXX" = "g++" ; then
 		AC_PATH_PROG(CXX,g++)
@@ -123,6 +155,13 @@ AC_MSG_RESULT($cf_with_cxx_binding)
 AC_MSG_CHECKING(if you want to build with Ada95)
 AC_MSG_RESULT($cf_with_ada)
 
+AC_MSG_CHECKING(if you want to install terminal database)
+AC_ARG_ENABLE(db-install,
+	[  --disable-db-install    suppress install of terminal database],
+	[cf_with_db_install=$enableval],
+	[cf_with_db_install=yes])
+AC_MSG_RESULT($cf_with_db_install)
+
 AC_MSG_CHECKING(if you want to install manpages)
 AC_ARG_WITH(manpages,
 	[  --without-manpages      suppress install of manpages],
@@ -132,14 +171,14 @@ AC_MSG_RESULT($cf_with_manpages)
 
 AC_MSG_CHECKING(if you want to build programs such as tic)
 AC_ARG_WITH(progs,
-	[  --without-progs         suppress build with programs (e.g., tic)],
+	[  --without-progs         suppress build/install with programs (e.g., tic)],
 	[cf_with_progs=$withval],
 	[cf_with_progs=yes])
 AC_MSG_RESULT($cf_with_progs)
 
 AC_MSG_CHECKING(if you want to build test-programs)
 AC_ARG_WITH(tests,
-	[  --without-tests         suppress build with test-programs],
+	[  --without-tests         suppress build/install with test-programs],
 	[cf_with_tests=$withval],
 	[cf_with_tests=yes])
 AC_MSG_RESULT($cf_with_tests)
@@ -196,6 +235,7 @@ dnl These are standard among *NIX systems, but not when cross-compiling
 AC_CHECK_TOOL(RANLIB, ranlib, ':')
 AC_CHECK_TOOL(LD, ld, ld)
 AC_CHECK_TOOL(AR, ar, ar)
+AC_CHECK_TOOL(NM, nm, nm)
 CF_AR_FLAGS
 
 dnl Special option for use by system-builders: the install-prefix is used to
@@ -402,14 +442,31 @@ AC_MSG_RESULT($cf_cv_do_relink)
 	;;
 esac
 
+# we will build libraries one-level down.
+rel_builddir=..
 CF_SHARED_OPTS
-if test "$CC_SHARED_OPTS" = "unknown"; then
-	for model in $cf_list_models; do
-		if test "$model" = "shared"; then
+for model in $cf_list_models; do
+	case $model in #(vi
+	libtool)
+		CF_WITH_LIBTOOL_OPTS
+		CF_WITH_EXPORT_SYMS
+		;;
+	shared) #(vi
+		if test "$CC_SHARED_OPTS" = "unknown"; then
 			AC_ERROR(Shared libraries are not supported in this version)
 		fi
-	done
-fi
+		CF_WITH_VERSIONED_SYMS
+		;;
+	esac
+done
+
+# pretend that ncurses==ncursesw==ncursest
+AC_MSG_CHECKING(if you want to disable library suffixes)
+AC_ARG_ENABLE(lib-suffixes,
+	[  --disable-lib-suffixes  disable library suffixes],
+	[disable_lib_suffixes=$enableval],
+	[disable_lib_suffixes=no])
+AC_MSG_RESULT($disable_lib_suffixes)
 
 ### If we're building with rpath, try to link non-standard libs that way too.
 if test "$DFT_LWR_MODEL" = "shared"; then
@@ -444,8 +501,9 @@ os2*) #(vi
 esac
 AC_SUBST(TERMINFO_SRC)
 
+NCURSES_USE_DATABASE=0
 if test "$use_database" != no ; then
-	AC_DEFINE(USE_DATABASE,1,[Define to 1 if we should use the terminal database])
+	NCURSES_USE_DATABASE=1
 
 	AC_MSG_CHECKING(which terminfo source-file will be installed)
 	AC_ARG_WITH(database,
@@ -461,6 +519,7 @@ if test "$use_database" != no ; then
 else
 	with_hashed_db=no
 fi
+AC_SUBST(NCURSES_USE_DATABASE)
 
 AC_MSG_CHECKING(for list of fallback descriptions)
 AC_ARG_WITH(fallbacks,
@@ -577,6 +636,7 @@ AC_ARG_ENABLE(termcap,
 	[with_termcap=no])
 AC_MSG_RESULT($with_termcap)
 
+NCURSES_USE_TERMCAP=0
 if test "x$with_termcap" != "xyes" ; then
 	if test "$use_database" = no ; then
 		if test -z "$with_fallback" ; then
@@ -586,37 +646,38 @@ if test "x$with_termcap" != "xyes" ; then
 	AC_DEFINE(PURE_TERMINFO,1,[Define to 1 if we should support only terminfo])
 else
 
-if test "$with_ticlib" != no ; then
-	AC_ERROR(Options --with-ticlib and --enable-termcap cannot be combined)
+	if test "$with_ticlib" != no ; then
+		AC_ERROR(Options --with-ticlib and --enable-termcap cannot be combined)
+	fi
+
+	NCURSES_USE_TERMCAP=1
+	AC_MSG_CHECKING(for list of termcap files)
+	CF_WITH_PATHLIST(termpath,
+		[  --with-termpath=XXX     specify list of termcap files],
+		TERMPATH,
+		/etc/termcap:/usr/share/misc/termcap)
+	AC_MSG_RESULT($TERMPATH)
+	test -n "$TERMPATH" && AC_DEFINE_UNQUOTED(TERMPATH,"$TERMPATH",[Define to set the termcap searchlist])
+
+	###	use option --enable-getcap to use a hacked getcap for reading termcaps
+	AC_MSG_CHECKING(if fast termcap-loader is needed)
+	AC_ARG_ENABLE(getcap,
+		[  --enable-getcap         fast termcap load, no xrefs to terminfo],
+		[with_getcap=$enableval],
+		[with_getcap=no])
+	AC_MSG_RESULT($with_getcap)
+	test "x$with_getcap" = "xyes" && AC_DEFINE(USE_GETCAP,1,[Define to 1 to use fast termcap-loader])
+
+	AC_MSG_CHECKING(if translated termcaps will be cached in ~/.terminfo)
+	AC_ARG_ENABLE(getcap-cache,
+		[  --enable-getcap-cache   cache translated termcaps in ~/.terminfo],
+		[with_getcap_cache=$enableval],
+		[with_getcap_cache=no])
+	AC_MSG_RESULT($with_getcap_cache)
+	test "x$with_getcap_cache" = "xyes" && AC_DEFINE(USE_GETCAP_CACHE,1,[Define to 1 if translated termcap should be stored in $HOME/.terminfo])
+
 fi
-
-AC_DEFINE(USE_TERMCAP,1,[Define to 1 if we should support termcap])
-AC_MSG_CHECKING(for list of termcap files)
-CF_WITH_PATHLIST(termpath,
-	[  --with-termpath=XXX     specify list of termcap files],
-	TERMPATH,
-	/etc/termcap:/usr/share/misc/termcap)
-AC_MSG_RESULT($TERMPATH)
-test -n "$TERMPATH" && AC_DEFINE_UNQUOTED(TERMPATH,"$TERMPATH",[Define to set the termcap searchlist])
-
-###	use option --enable-getcap to use a hacked getcap for reading termcaps
-AC_MSG_CHECKING(if fast termcap-loader is needed)
-AC_ARG_ENABLE(getcap,
-	[  --enable-getcap         fast termcap load, no xrefs to terminfo],
-	[with_getcap=$enableval],
-	[with_getcap=no])
-AC_MSG_RESULT($with_getcap)
-test "x$with_getcap" = "xyes" && AC_DEFINE(USE_GETCAP,1,[Define to 1 to use fast termcap-loader])
-
-AC_MSG_CHECKING(if translated termcaps will be cached in ~/.terminfo)
-AC_ARG_ENABLE(getcap-cache,
-	[  --enable-getcap-cache   cache translated termcaps in ~/.terminfo],
-	[with_getcap_cache=$enableval],
-	[with_getcap_cache=no])
-AC_MSG_RESULT($with_getcap_cache)
-test "x$with_getcap_cache" = "xyes" && AC_DEFINE(USE_GETCAP_CACHE,1,[Define to 1 if translated termcap should be stored in $HOME/.terminfo])
-
-fi
+AC_SUBST(NCURSES_USE_TERMCAP)
 
 ###   Use option --disable-home-terminfo to completely remove ~/.terminfo
 AC_MSG_CHECKING(if ~/.terminfo is wanted)
@@ -729,7 +790,9 @@ AC_ARG_ENABLE(widec,
 	[with_widec=no])
 AC_MSG_RESULT($with_widec)
 if test "x$with_widec" = xyes ; then
-	LIB_SUFFIX="w${LIB_SUFFIX}"
+	if test "x$disable_lib_suffixes" = xno ; then
+		LIB_SUFFIX="w${LIB_SUFFIX}"
+	fi
 	AC_DEFINE(USE_WIDEC_SUPPORT,1,[Define to 1 to compile with wide-char/UTF-8 code])
 	AC_DEFINE(NCURSES_WIDECHAR,1,[Define to 1 to compile with wide-char/UTF-8 code])
 
@@ -1167,7 +1230,23 @@ if test "x$with_reentrant" = xyes ; then
 		CF_ADD_LIB(pthread,TEST_LIBS)
 		CF_ADD_LIB(pthread,TEST_LIBS2)
 	else
-		LIB_SUFFIX="t${LIB_SUFFIX}"
+		# when not using weak symbols but with_reentrant,
+		# add 't' to the library suffix on all platforms
+		# except cygwin, where we only do that if ALSO
+		# compiling with full thread support.
+		case "$host" in
+		*cygwin* | *msys*) #(vi
+			if test "$with_pthread" = "yes" ; then
+				if test "x$disable_lib_suffixes" = "xno" ; then
+					LIB_SUFFIX="t${LIB_SUFFIX}"
+				fi
+			fi ;;
+		*)
+			if test "x$disable_lib_suffixes" = "xno" ; then
+				LIB_SUFFIX="t${LIB_SUFFIX}"
+			fi
+			;;
+		esac
 	fi
 	AC_DEFINE(USE_REENTRANT,1,[Define to 1 to use experimental reentrant feature])
 	CF_NCURSES_ABI_6
@@ -1247,7 +1326,7 @@ AC_MSG_RESULT($with_warnings)
 
 if test "x$with_warnings" = "xyes"; then
  	CF_ADD_ADAFLAGS(-gnatg)
-	CF_GCC_WARNINGS(Wdeclaration-after-statement Wextra Wno-unknown-pragmas Wswitch-enum)
+	CF_GCC_WARNINGS(Wno-unknown-pragmas Wswitch-enum)
 	if test "x$cf_with_cxx" = xyes ; then
 		CF_GXX_WARNINGS(Wno-unused)
 	fi
@@ -1313,9 +1392,13 @@ fi
 
 AC_SUBST(ADA_TRACE)
 
+CF_DISABLE_GNAT_PROJECTS
+
 ###	Checks for libraries.
 case $cf_cv_system_name in #(vi
-*mingw32*) #(vi
+*mingw32*|*mingw64*) #(vi
+	CPPFLAGS="$CPPFLAGS -DWINVER=0x0501"
+	LIBS=" -lpsapi $LIBS"
 	;;
 *)
 AC_CHECK_FUNC(gettimeofday,
@@ -1327,7 +1410,7 @@ AC_CHECK_LIB(bsd, gettimeofday,
 	;;
 esac
 
-CF_MATH_LIB(MATH_LIB,sin(x))
+CF_MATH_LIB(MATH_LIB,pow(sin(x),x))
 AC_SUBST(MATH_LIB)
 
 ###	Checks for header files.
@@ -1404,6 +1487,7 @@ AC_CHECK_FUNCS( \
 getcwd \
 getegid \
 geteuid \
+getopt \
 getttynam \
 issetugid \
 poll \
@@ -1422,6 +1506,12 @@ tcgetpgrp \
 times \
 vsnprintf \
 )
+
+if test "x$ac_cv_func_getopt" = xno &&
+   test "x$cf_with_progs$cf_with_tests" != xnono; then
+	AC_MSG_ERROR(getopt is required for building programs)
+fi
+
 if test "x$with_getcap" = "xyes" ; then
 	CF_CGETENT
 fi
@@ -1577,9 +1667,10 @@ dnl At the moment we support no other Ada95 compiler.
 			CF_ADD_ADAFLAGS(-gnatpn)
 			CF_FIXUP_ADAFLAGS
 
+			CF_GNATPREP_OPT_T
+
 			CF_GNAT_GENERICS
 			CF_GNAT_SIGINT
-			CF_GNAT_PRAGMA_UNREF
 			CF_GNAT_PROJECTS
 
 			CF_WITH_ADA_COMPILER
@@ -1594,6 +1685,11 @@ dnl At the moment we support no other Ada95 compiler.
 	fi
 else
 	cf_with_ada=no
+fi
+
+# do this "late" to avoid conflict with header-checks
+if test "x$with_widec" = xyes ; then
+	AC_CHECK_SIZEOF(wchar_t)
 fi
 
 ### Construct the ncurses library-subsets, if any, from this set of keywords:
@@ -1634,8 +1730,9 @@ LIB_SUBSETS="${LIB_SUBSETS}base"
 if test "$with_term_driver" != no ; then
 	LIB_SUBSETS="${LIB_SUBSETS}+port_drivers"
 	case $cf_cv_system_name in #(vi
-	*mingw32*) #(vi
+	*mingw32*|*mingw64*) #(vi
 		LIB_SUBSETS="${LIB_SUBSETS}+port_tinfo+port_win32con"
+		CPPFLAGS="$CPPFLAGS -DUSE_WIN32CON_DRIVER"
 		;;
 	*) #(vi
 		LIB_SUBSETS="${LIB_SUBSETS}+port_tinfo"
@@ -1779,8 +1876,8 @@ fi
 
 if test "$DFT_LWR_MODEL" = shared ; then
 	case $cf_cv_system_name in #(vi
-	cygwin*)
-		# "lib" files have ".dll.a" suffix, "cyg" files have ".dll"
+	cygwin*|msys*)
+		# "lib" files have ".dll.a" suffix, "cyg"or "msys-" files have ".dll"
 		TINFO_SUFFIX=.dll
 		;;
 	esac
@@ -1811,10 +1908,15 @@ normal|debug|profile)
 esac
 
 AC_MSG_CHECKING(where we will install curses.h)
-test "$with_overwrite" = no && \
-test "x$includedir" = 'x${prefix}/include' && \
-	includedir='${prefix}/include/ncurses'${LIB_SUFFIX}
-AC_MSG_RESULT($includedir)
+AC_SUBST(includesubdir)
+includesubdir=
+if test "$with_overwrite" = no && \
+ ( test "x$includedir" = 'x${prefix}/include' || \
+   test "x$includedir" = "x${prefix}/include" )
+then
+	includesubdir="/ncurses${LIB_SUFFIX}"
+fi
+AC_MSG_RESULT(${includedir}${includesubdir})
 
 ### Resolve a conflict between normal and wide-curses by forcing applications
 ### that will need libutf8 to add it to their configure script.
@@ -1864,6 +1966,7 @@ CF_ADD_CFLAGS($EXTRA_CFLAGS)
 
 ### Define substitutions for header files to avoid name-pollution
 CF_SUBST_IF(["x$cf_cv_have_tcgetattr" = xyes], HAVE_TCGETATTR, 1, 0)
+CF_SUBST_IF(["x$ac_cv_header_stdint_h" = xyes], HAVE_STDINT_H, 1, 0)
 CF_SUBST_IF(["x$ac_cv_header_termio_h" = xyes], HAVE_TERMIO_H, 1, 0)
 CF_SUBST_IF(["x$ac_cv_header_termios_h" = xyes], HAVE_TERMIOS_H, 1, 0)
 
@@ -1914,7 +2017,64 @@ AC_SUBST(MENU_NAME)
 AC_SUBST(FORM_NAME)
 AC_SUBST(CXX_NAME)
 
+# workaround for g++ versus Solaris (20131116)
+case $cf_cv_system_name in #(vi
+solaris2*) #(vi
+	case "x$CPPFLAGS" in #(vi
+	*-D_XOPEN_SOURCE_EXTENDED*)
+		CF_VERBOSE(moving _XOPEN_SOURCE_EXTENDED to work around g++ problem)
+		CFLAGS="$CFLAGS -D_XOPEN_SOURCE_EXTENDED"
+		CPPFLAGS=`echo "x$CPPFLAGS" | sed -e  's/^.//' -e 's/-D_XOPEN_SOURCE_EXTENDED//'`
+		;;
+	esac
+	;;
+esac
+
+# AC_CHECK_SIZEOF demands a literal parameter, no variables.  So we do this.
+case "x$NCURSES_OSPEED" in #(vi
+*short*) #(vi
+	cf_compatible=1
+	;;
+*)
+	cf_compatible=0
+	;;
+esac
+AC_DEFINE_UNQUOTED(NCURSES_OSPEED_COMPAT,$cf_compatible,[Define to 1 if termcap variable ospeed is short])
+
+case "x$cf_cv_typeof_chtype" in
+xshort|xint|xlong)
+	cf_cv_typeof_chtype="unsigned $cf_cv_typeof_chtype"
+	;;
+esac
+
+case "x$cf_cv_typeof_mmask_t" in
+xshort|xint|xlong)
+	cf_cv_typeof_mmask_t="unsigned $cf_cv_typeof_mmask_t"
+	;;
+esac
+
+# substitute into misc/Makefile to suppress
+# (un)install.data from the
+# (un)install rules.
+if test "x$cf_with_db_install" = "xno"; then
+	MISC_INSTALL_DATA=
+	MISC_UNINSTALL_DATA=
+else
+	MISC_INSTALL_DATA=install.data
+	MISC_UNINSTALL_DATA=uninstall.data
+fi
+AC_SUBST(MISC_INSTALL_DATA)
+AC_SUBST(MISC_UNINSTALL_DATA)
+
 SUB_SCRIPTS=
+
+dnl Override the package used for exported symbols
+if test -n "$PACKAGE"
+then
+	PACKAGE="${PACKAGE}${DFT_ARG_SUFFIX}"
+	export PACKAGE
+	echo "package: $PACKAGE"
+fi
 
 AC_OUTPUT( \
 	include/MKterm.h.awk \
@@ -1988,6 +2148,7 @@ cf_cv_system_name="$cf_cv_system_name"
 cf_cv_term_driver="$with_term_driver"
 cf_with_ada="$cf_with_ada"
 cf_with_cxx_binding="$cf_with_cxx_binding"
+cf_with_db_install="$cf_with_db_install"
 cf_with_manpages="$cf_with_manpages"
 cf_with_tests="$cf_with_tests"
 with_shared_cxx="$with_shared_cxx"

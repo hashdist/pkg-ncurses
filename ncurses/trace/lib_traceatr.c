@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -43,7 +43,7 @@
 #define CUR SP_TERMTYPE
 #endif
 
-MODULE_ID("$Id: lib_traceatr.c,v 1.79 2012/02/22 22:40:24 tom Exp $")
+MODULE_ID("$Id: lib_traceatr.c,v 1.81 2014/02/01 22:09:27 tom Exp $")
 
 #define COLOR_OF(c) ((c < 0) ? "default" : (c > 7 ? color_of(c) : colors[c].name))
 
@@ -103,6 +103,9 @@ _traceattr2(int bufnum, chtype newmode)
 	{ A_CHARTEXT,		"A_CHARTEXT" },
 	{ A_NORMAL,		"A_NORMAL" },
 	{ A_COLOR,		"A_COLOR" },
+#if USE_ITALIC
+	{ A_ITALIC,		"A_ITALIC" },
+#endif
 	/* *INDENT-ON* */
 
     }
@@ -148,7 +151,7 @@ _traceattr2(int bufnum, chtype newmode)
 		    _nc_SPRINTF(temp, _nc_SLIMIT(sizeof(temp))
 				"{%d}", pairnum);
 #else
-		    short fg, bg;
+		    NCURSES_COLOR_T fg, bg;
 
 		    if (pair_content(pairnum, &fg, &bg) == OK) {
 			_nc_SPRINTF(temp, _nc_SLIMIT(sizeof(temp))

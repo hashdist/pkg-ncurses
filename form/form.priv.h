@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2012 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2012,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -30,7 +30,7 @@
  *   Author:  Juergen Pfeifer, 1995,1997                                    *
  ****************************************************************************/
 
-/* $Id: form.priv.h,v 0.33 2012/03/11 00:37:46 tom Exp $ */
+/* $Id: form.priv.h,v 0.38 2014/11/01 13:56:14 tom Exp $ */
 
 #ifndef FORM_PRIV_H
 #define FORM_PRIV_H 1
@@ -125,6 +125,8 @@ extern NCURSES_EXPORT_VAR(FIELDTYPE *) _nc_Default_FieldType;
 #define Single_Line_Field(field) \
    (((field)->rows + (field)->nrow) == 1)
 
+#define Field_Has_Option(f,o)      ((((unsigned)(f)->opts) & o) != 0)
+
 /* Logic to determine whether or not a field is selectable */
 #define Field_Is_Selectable(f)     (((unsigned)((f)->opts) & O_SELECTABLE)==O_SELECTABLE)
 #define Field_Is_Not_Selectable(f) (((unsigned)((f)->opts) & O_SELECTABLE)!=O_SELECTABLE)
@@ -146,7 +148,7 @@ TypeArgument;
 			O_NL_OVERLOAD  |\
 			O_BS_OVERLOAD   )
 
-#define ALL_FIELD_OPTS (Field_Options)( \
+#define STD_FIELD_OPTS (Field_Options)( \
 			O_VISIBLE |\
 			O_ACTIVE  |\
 			O_PUBLIC  |\
@@ -156,7 +158,11 @@ TypeArgument;
 			O_AUTOSKIP|\
 			O_NULLOK  |\
 			O_PASSOK  |\
-			O_STATIC   )
+			O_STATIC)
+
+#define ALL_FIELD_OPTS (Field_Options)( \
+			STD_FIELD_OPTS |\
+			O_DYNAMIC_JUSTIFY)
 
 #define C_BLANK ' '
 #define is_blank(c) ((c)==C_BLANK)
@@ -214,11 +220,11 @@ extern NCURSES_EXPORT(wchar_t *) _nc_Widen_String(char *, int *);
 
 #ifdef TRACE
 
-#define returnField(code)	TRACE_RETURN(code,field)
-#define returnFieldPtr(code)	TRACE_RETURN(code,field_ptr)
-#define returnForm(code)	TRACE_RETURN(code,form)
-#define returnFieldType(code)	TRACE_RETURN(code,field_type)
-#define returnFormHook(code)	TRACE_RETURN(code,form_hook)
+#define returnField(code)	TRACE_RETURN1(code,field)
+#define returnFieldPtr(code)	TRACE_RETURN1(code,field_ptr)
+#define returnForm(code)	TRACE_RETURN1(code,form)
+#define returnFieldType(code)	TRACE_RETURN1(code,field_type)
+#define returnFormHook(code)	TRACE_RETURN1(code,form_hook)
 
 extern NCURSES_EXPORT(FIELD **)	    _nc_retrace_field_ptr (FIELD **);
 extern NCURSES_EXPORT(FIELD *)	    _nc_retrace_field (FIELD *);

@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -82,7 +82,7 @@
 
 #include <ctype.h>
 
-MODULE_ID("$Id: tty_update.c,v 1.276 2013/02/16 21:12:02 tom Exp $")
+MODULE_ID("$Id: tty_update.c,v 1.280 2014/08/23 19:25:18 tom Exp $")
 
 /*
  * This define controls the line-breakout optimization.  Every once in a
@@ -179,7 +179,7 @@ position_check(NCURSES_SP_DCLx int expected_y, int expected_x, char *legend)
     }
 }
 #else
-#define position_check(sp, expected_y, expected_x, legend)	/* nothing */
+#define position_check(expected_y, expected_x, legend)	/* nothing */
 #endif /* POSITION_DEBUG */
 
 /****************************************************************************
@@ -194,13 +194,17 @@ GoTo(NCURSES_SP_DCLx int const row, int const col)
     TR(TRACE_MOVE, ("GoTo(%p, %d, %d) from (%d, %d)",
 		    (void *) SP_PARM, row, col, SP_PARM->_cursrow, SP_PARM->_curscol));
 
-    position_check(SP_PARM, SP_PARM->_cursrow, SP_PARM->_curscol, "GoTo");
+    position_check(NCURSES_SP_ARGx
+		   SP_PARM->_cursrow,
+		   SP_PARM->_curscol, "GoTo");
 
     TINFO_MVCUR(NCURSES_SP_ARGx
 		SP_PARM->_cursrow,
 		SP_PARM->_curscol,
 		row, col);
-    position_check(SP_PARM, SP_PARM->_cursrow, SP_PARM->_curscol, "GoTo2");
+    position_check(NCURSES_SP_ARGx
+		   SP_PARM->_cursrow,
+		   SP_PARM->_curscol, "GoTo2");
 }
 
 static NCURSES_INLINE void
@@ -390,7 +394,7 @@ PutCharLR(NCURSES_SP_DCLx const ARG_CH_T ch)
 
 	PutAttrChar(NCURSES_SP_ARGx ch);
 	SP_PARM->_curscol--;
-	position_check(SP_PARM,
+	position_check(NCURSES_SP_ARGx
 		       SP_PARM->_cursrow,
 		       SP_PARM->_curscol,
 		       "exit_am_mode");
@@ -449,7 +453,7 @@ wrap_cursor(NCURSES_SP_DCL0)
     } else {
 	SP_PARM->_curscol--;
     }
-    position_check(SP_PARM,
+    position_check(NCURSES_SP_ARGx
 		   SP_PARM->_cursrow,
 		   SP_PARM->_curscol,
 		   "wrap_cursor");
@@ -469,7 +473,9 @@ PutChar(NCURSES_SP_DCLx const ARG_CH_T ch)
     if (SP_PARM->_curscol >= screen_columns(SP_PARM))
 	wrap_cursor(NCURSES_SP_ARG);
 
-    position_check(SP_PARM, SP_PARM->_cursrow, SP_PARM->_curscol, "PutChar");
+    position_check(NCURSES_SP_ARGx
+		   SP_PARM->_cursrow,
+		   SP_PARM->_curscol, "PutChar");
 }
 
 /*
@@ -490,7 +496,7 @@ can_clear_with(NCURSES_SP_DCLx ARG_CH_T ch)
 	if (SP_PARM->_default_fg != C_MASK || SP_PARM->_default_bg != C_MASK)
 	    return FALSE;
 	if ((pair = GetPair(CHDEREF(ch))) != 0) {
-	    short fg, bg;
+	    NCURSES_COLOR_T fg, bg;
 	    if (NCURSES_SP_NAME(pair_content) (NCURSES_SP_ARGx
 					       (short) pair,
 					       &fg, &bg) == ERR
@@ -622,6 +628,7 @@ PutRange(NCURSES_SP_DCLx
 	 int first, int last)
 {
     int i, j, same;
+    int rc;
 
     TR(TRACE_CHARPUT, ("PutRange(%p, %p, %p, %d, %d, %d)",
 		       (void *) SP_PARM,
@@ -649,9 +656,11 @@ PutRange(NCURSES_SP_DCLx
 	 * Always return 1 for the next GoTo() after a PutRange() if we found
 	 * identical characters at end of interval
 	 */
-	return (same == 0 ? i : 1);
+	rc = (same == 0 ? i : 1);
+    } else {
+	rc = EmitRange(NCURSES_SP_ARGx ntext + first, last - first + 1);
     }
-    return EmitRange(NCURSES_SP_ARGx ntext + first, last - first + 1);
+    return rc;
 }
 
 /* leave unbracketed here so 'indent' works */
@@ -1486,9 +1495,17 @@ TransformLine(NCURSES_SP_DCLx int const lineno)
 	    if (oLastChar < nLastChar) {
 		int m = max(nLastNonblank, oLastNonblank);
 #if USE_WIDEC_SUPPORT
-		while (isWidecExt(newLine[n + 1]) && n) {
-		    --n;
-		    --oLastChar;
+		if (n) {
+		    while (isWidecExt(newLine[n + 1]) && n) {
+			--n;
+			--oLastChar;	/* increase cost */
+		    }
+		} else if (n >= firstChar &&
+			   isWidecBase(newLine[n])) {
+		    while (isWidecExt(newLine[n + 1])) {
+			++n;
+			++oLastChar;	/* decrease cost */
+		    }
 		}
 #endif
 		GoTo(NCURSES_SP_ARGx lineno, n + 1);
@@ -1508,8 +1525,9 @@ TransformLine(NCURSES_SP_DCLx int const lineno)
 		if (DelCharCost(SP_PARM, oLastChar - nLastChar)
 		    > SP_PARM->_el_cost + nLastNonblank - (n + 1)) {
 		    if (PutRange(NCURSES_SP_ARGx oldLine, newLine, lineno,
-				 n + 1, nLastNonblank))
-			  GoTo(NCURSES_SP_ARGx lineno, nLastNonblank + 1);
+				 n + 1, nLastNonblank)) {
+			GoTo(NCURSES_SP_ARGx lineno, nLastNonblank + 1);
+		    }
 		    ClrToEOL(NCURSES_SP_ARGx blank, FALSE);
 		} else {
 		    /*
@@ -1570,7 +1588,7 @@ ClearScreen(NCURSES_SP_DCLx NCURSES_CH_T blank)
 	    UpdateAttrs(SP_PARM, blank);
 	    NCURSES_PUTP2("clear_screen", clear_screen);
 	    SP_PARM->_cursrow = SP_PARM->_curscol = 0;
-	    position_check(SP_PARM,
+	    position_check(NCURSES_SP_ARGx
 			   SP_PARM->_cursrow,
 			   SP_PARM->_curscol,
 			   "ClearScreen");
@@ -1660,7 +1678,9 @@ InsStr(NCURSES_SP_DCLx NCURSES_CH_T * line, int count)
 	    count--;
 	}
     }
-    position_check(SP_PARM, SP_PARM->_cursrow, SP_PARM->_curscol, "InsStr");
+    position_check(NCURSES_SP_ARGx
+		   SP_PARM->_cursrow,
+		   SP_PARM->_curscol, "InsStr");
 }
 
 /*

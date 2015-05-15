@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -42,7 +42,7 @@
 
 #include <curses.priv.h>
 
-MODULE_ID("$Id: lib_getch.c,v 1.126 2013/02/16 18:30:37 tom Exp $")
+MODULE_ID("$Id: lib_getch.c,v 1.131 2014/05/10 20:36:57 tom Exp $")
 
 #include <fifo_defs.h>
 
@@ -124,6 +124,17 @@ _nc_use_meta(WINDOW *win)
     return (sp ? sp->_use_meta : 0);
 }
 
+#ifdef USE_TERM_DRIVER
+# ifdef __MINGW32__
+static HANDLE
+_nc_get_handle(int fd)
+{
+    intptr_t value = _get_osfhandle(fd);
+    return (HANDLE) value;
+}
+# endif
+#endif
+
 /*
  * Check for mouse activity, returning nonzero if we find any.
  */
@@ -133,7 +144,16 @@ check_mouse_activity(SCREEN *sp, int delay EVENTLIST_2nd(_nc_eventlist * evl))
     int rc;
 
 #ifdef USE_TERM_DRIVER
-    rc = TCBOf(sp)->drv->testmouse(TCBOf(sp), delay EVENTLIST_2nd(evl));
+    TERMINAL_CONTROL_BLOCK *TCB = TCBOf(sp);
+    rc = TCBOf(sp)->drv->td_testmouse(TCBOf(sp), delay EVENTLIST_2nd(evl));
+# ifdef __MINGW32__
+    /* if we emulate terminfo on console, we have to use the console routine */
+    if (IsTermInfoOnConsole(sp)) {
+	HANDLE fd = _nc_get_handle(sp->_ifd);
+	rc = _nc_mingw_testmouse(sp, fd, delay EVENTLIST_2nd(evl));
+    } else
+# endif
+	rc = TCB->drv->td_testmouse(TCB, delay EVENTLIST_2nd(evl));
 #else
 #if USE_SYSMOUSE
     if ((sp->_mouse_type == M_SYSMOUSE)
@@ -259,7 +279,7 @@ fifo_push(SCREEN *sp EVENTLIST_2nd(_nc_eventlist * evl))
     } else
 #endif
 #if USE_KLIBC_KBD
-    if (isatty(sp->_ifd) && sp->_cbreak) {
+    if (NC_ISATTY(sp->_ifd) && sp->_cbreak) {
 	ch = _read_kbd(0, 1, !sp->_raw);
 	n = (ch == -1) ? -1 : 1;
 	sp->_extended_key = (ch == 0);
@@ -268,7 +288,14 @@ fifo_push(SCREEN *sp EVENTLIST_2nd(_nc_eventlist * evl))
     {				/* Can block... */
 #ifdef USE_TERM_DRIVER
 	int buf;
-	n = CallDriver_1(sp, read, &buf);
+#ifdef __MINGW32__
+	if (NC_ISATTY(sp->_ifd) && IsTermInfoOnConsole(sp) && sp->_cbreak)
+	    n = _nc_mingw_console_read(sp,
+				       _nc_get_handle(sp->_ifd),
+				       &buf);
+	else
+#endif
+	    n = CallDriver_1(sp, td_read, &buf);
 	ch = buf;
 #else
 	unsigned char c2 = 0;

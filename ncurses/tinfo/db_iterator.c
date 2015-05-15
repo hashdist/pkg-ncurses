@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 2006-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright (c) 2006-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -43,7 +43,7 @@
 #include <hashed_db.h>
 #endif
 
-MODULE_ID("$Id: db_iterator.c,v 1.35 2012/08/25 21:55:00 tom Exp $")
+MODULE_ID("$Id: db_iterator.c,v 1.39 2014/11/01 14:47:00 tom Exp $")
 
 #define HaveTicDirectory _nc_globals.have_tic_directory
 #define KeepTicDirectory _nc_globals.keep_tic_directory
@@ -185,10 +185,12 @@ _nc_tic_dir(const char *path)
 	if (path != 0) {
 	    TicDirectory = path;
 	    HaveTicDirectory = TRUE;
-	} else if (!HaveTicDirectory && use_terminfo_vars()) {
-	    char *envp;
-	    if ((envp = getenv("TERMINFO")) != 0)
-		return _nc_tic_dir(envp);
+	} else if (HaveTicDirectory == 0) {
+	    if (use_terminfo_vars()) {
+		const char *envp;
+		if ((envp = getenv("TERMINFO")) != 0)
+		    return _nc_tic_dir(envp);
+	    }
 	}
     }
     return TicDirectory ? TicDirectory : TERMINFO;
@@ -272,7 +274,7 @@ _nc_first_db(DBDIRS * state, int *offset)
 	 */
 	values[dbdTIC] = TicDirectory;
 
-#if USE_DATABASE
+#if NCURSES_USE_DATABASE
 #ifdef TERMINFO_DIRS
 	values[dbdCfgList] = TERMINFO_DIRS;
 #endif
@@ -281,19 +283,19 @@ _nc_first_db(DBDIRS * state, int *offset)
 #endif
 #endif
 
-#if USE_TERMCAP
+#if NCURSES_USE_TERMCAP
 	values[dbdCfgList2] = TERMPATH;
 #endif
 
 	if (use_terminfo_vars()) {
-#if USE_DATABASE
+#if NCURSES_USE_DATABASE
 	    values[dbdEnvOnce] = cache_getenv("TERMINFO", dbdEnvOnce);
 	    values[dbdHome] = _nc_home_terminfo();
 	    (void) cache_getenv("HOME", dbdHome);
 	    values[dbdEnvList] = cache_getenv("TERMINFO_DIRS", dbdEnvList);
 
 #endif
-#if USE_TERMCAP
+#if NCURSES_USE_TERMCAP
 	    values[dbdEnvOnce2] = cache_getenv("TERMCAP", dbdEnvOnce2);
 	    /* only use $TERMCAP if it is an absolute path */
 	    if (values[dbdEnvOnce2] != 0
@@ -301,7 +303,7 @@ _nc_first_db(DBDIRS * state, int *offset)
 		values[dbdEnvOnce2] = 0;
 	    }
 	    values[dbdEnvList2] = cache_getenv("TERMPATH", dbdEnvList2);
-#endif /* USE_TERMCAP */
+#endif /* NCURSES_USE_TERMCAP */
 	}
 
 	for (j = 0; j < dbdLAST; ++j) {

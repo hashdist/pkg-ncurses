@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -42,7 +42,7 @@
 
 #include <dump_entry.h>
 
-MODULE_ID("$Id: infocmp.c,v 1.124 2013/04/13 22:15:14 Miroslav.Lichvar Exp $")
+MODULE_ID("$Id: infocmp.c,v 1.129 2014/02/01 22:11:03 tom Exp $")
 
 #define L_CURL "{"
 #define R_CURL "}"
@@ -404,7 +404,11 @@ show_comparing(char **names)
  * macro is used for limit-checks against the symbols that tic uses to omit
  * the two types of non-standard entry.
  */
+#if NCURSES_XNAMES
 #define check_user_definable(n,limit) if (!_nc_user_definable && (n) > (limit)) break
+#else
+#define check_user_definable(n,limit) if ((n) > (limit)) break
+#endif
 
 /*
  * Use these macros to simplify loops on C_COMMON and C_NAND:
@@ -784,7 +788,7 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
     const assoc *ap;
     int tp_lines = tp->Numbers[2];
 
-    if (cap == ABSENT_STRING || cap == CANCELLED_STRING)
+    if (!VALID_STRING(cap))
 	return;
     (void) printf("%s: ", name);
 
@@ -800,12 +804,13 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 	for (i = 0; i < STRCOUNT; i++) {
 	    char *cp = tp->Strings[i];
 
-	    /* don't use soft-key capabilities */
-	    if (strnames[i][0] == 'k' && strnames[i][0] == 'f')
+	    /* don't use function-key capabilities */
+	    if (strnames[i][0] == 'k' && strnames[i][1] == 'f')
 		continue;
 
-	    if (cp != ABSENT_STRING && cp != CANCELLED_STRING && cp[0] && cp
-		!= cap) {
+	    if (VALID_STRING(cp) &&
+		cp[0] != '\0' &&
+		cp != cap) {
 		len = strlen(cp);
 		(void) strncpy(buf2, sp, len);
 		buf2[len] = '\0';
@@ -813,7 +818,7 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 		if (_nc_capcmp(cp, buf2))
 		    continue;
 
-#define ISRS(s)	(!strncmp((s), "is", 2) || !strncmp((s), "rs", 2))
+#define ISRS(s)	(!strncmp((s), "is", (size_t) 2) || !strncmp((s), "rs", (size_t) 2))
 		/*
 		 * Theoretically we just passed the test for translation
 		 * (equality once the padding is stripped).  However, there
@@ -853,7 +858,7 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 	/* now check for standard-mode sequences */
 	if (!expansion
 	    && (csi = skip_csi(sp)) != 0
-	    && (len = strspn(sp + csi, "0123456789;"))
+	    && (len = (strspn) (sp + csi, "0123456789;"))
 	    && (len < sizeof(buf3))
 	    && (next = (size_t) csi + len)
 	    && ((sp[next] == 'h') || (sp[next] == 'l'))) {
@@ -874,7 +879,7 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 	if (!expansion
 	    && (csi = skip_csi(sp)) != 0
 	    && sp[csi] == '?'
-	    && (len = strspn(sp + csi + 1, "0123456789;"))
+	    && (len = (strspn) (sp + csi + 1, "0123456789;"))
 	    && (len < sizeof(buf3))
 	    && (next = (size_t) csi + 1 + len)
 	    && ((sp[next] == 'h') || (sp[next] == 'l'))) {
@@ -894,7 +899,7 @@ analyze_string(const char *name, const char *cap, TERMTYPE *tp)
 	/* now check for ECMA highlight sequences */
 	if (!expansion
 	    && (csi = skip_csi(sp)) != 0
-	    && (len = strspn(sp + csi, "0123456789;")) != 0
+	    && (len = (strspn) (sp + csi, "0123456789;")) != 0
 	    && (len < sizeof(buf3))
 	    && (next = (size_t) csi + len)
 	    && sp[next] == 'm') {
@@ -1745,7 +1750,7 @@ main(int argc, char *argv[])
 	    tname[termcount] = argv[optind];
 
 	    if (directory) {
-#if USE_DATABASE
+#if NCURSES_USE_DATABASE
 #if MIXEDCASE_FILENAMES
 #define LEAF_FMT "%c"
 #else

@@ -44,7 +44,7 @@
 #include <hashed_db.h>
 #endif
 
-MODULE_ID("$Id: toe.c,v 1.71 2013/03/09 22:45:23 tom Exp $")
+MODULE_ID("$Id: toe.c,v 1.74 2013/12/15 01:08:28 tom Exp $")
 
 #define isDotname(name) (!strcmp(name, ".") || !strcmp(name, ".."))
 
@@ -232,9 +232,9 @@ make_db_name(char *dst, const char *src, unsigned limit)
     static const char suffix[] = DBM_SUFFIX;
 
     bool result = FALSE;
-    unsigned lens = sizeof(suffix) - 1;
-    unsigned size = strlen(src);
-    unsigned need = lens + size;
+    size_t lens = sizeof(suffix) - 1;
+    size_t size = strlen(src);
+    size_t need = lens + size;
 
     if (need <= limit) {
 	if (size >= lens
@@ -323,7 +323,7 @@ sorthook(int db_index, int db_limit, const char *term_name, TERMTYPE *tp)
     data->description = strmalloc(term_description(tp));
 }
 
-#if USE_TERMCAP
+#if NCURSES_USE_TERMCAP
 static void
 show_termcap(int db_index, int db_limit, char *buffer, DescHook hook)
 {
@@ -350,7 +350,7 @@ show_termcap(int db_index, int db_limit, char *buffer, DescHook hook)
 }
 #endif
 
-#if USE_DATABASE
+#if NCURSES_USE_DATABASE
 static char *
 copy_entryname(DIRENT * src)
 {
@@ -367,14 +367,14 @@ copy_entryname(DIRENT * src)
 
 static int
 typelist(int eargc, char *eargv[],
-	 bool verbosity,
+	 int verbosity,
 	 DescHook hook)
 /* apply a function to each entry in given terminfo directories */
 {
     int i;
 
     for (i = 0; i < eargc; i++) {
-#if USE_DATABASE
+#if NCURSES_USE_DATABASE
 	if (_nc_is_dir_path(eargv[i])) {
 	    char *cwd_buf = 0;
 	    DIR *termdir;
@@ -502,7 +502,7 @@ typelist(int eargc, char *eargv[],
 	}
 #endif
 #endif
-#if USE_TERMCAP
+#if NCURSES_USE_TERMCAP
 #if HAVE_BSD_CGETENT
 	{
 	    CGETENT_CONST char *db_array[2];
@@ -721,7 +721,7 @@ main(int argc, char *argv[])
 	DBDIRS state;
 	int offset;
 	const char *path;
-	char **eargv = allocArgv(2);
+	char **eargv = allocArgv((size_t) 2);
 	size_t count = 0;
 
 	if (eargv == 0)

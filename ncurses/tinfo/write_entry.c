@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -47,7 +47,7 @@
 #define TRACE_OUT(p)		/*nothing */
 #endif
 
-MODULE_ID("$Id: write_entry.c,v 1.87 2012/12/29 23:12:22 tom Exp $")
+MODULE_ID("$Id: write_entry.c,v 1.92 2014/11/01 14:47:00 tom Exp $")
 
 static int total_written;
 
@@ -93,7 +93,7 @@ check_writeable(int code)
     char dir[sizeof(LEAF_FMT)];
     char *s = 0;
 
-    if (code == 0 || (s = strchr(dirnames, code)) == 0)
+    if (code == 0 || (s = (strchr) (dirnames, code)) == 0)
 	_nc_err_abort("Illegal terminfo subdirectory \"" LEAF_FMT "\"", code);
 
     if (verified[s - dirnames])
@@ -185,13 +185,16 @@ make_db_root(const char *path)
  * Set the write directory for compiled entries.
  */
 NCURSES_EXPORT(void)
-_nc_set_writedir(char *dir)
+_nc_set_writedir(const char *dir)
 {
     const char *destination;
     char actual[PATH_MAX];
 
     if (dir == 0
-	&& use_terminfo_vars())
+#ifndef USE_ROOT_ENVIRON
+	&& use_terminfo_vars()
+#endif
+	)
 	dir = getenv("TERMINFO");
 
     if (dir != 0)
@@ -273,7 +276,7 @@ _nc_write_entry(TERMTYPE *const tp)
     char name_list[MAX_TERMINFO_LENGTH];
     char *first_name, *other_names;
     char *ptr;
-    const char *term_names = tp->term_names;
+    char *term_names = tp->term_names;
     size_t name_size = strlen(term_names);
 
     if (name_size == 0) {
@@ -333,7 +336,7 @@ _nc_write_entry(TERMTYPE *const tp)
 	    buffer[0] = 2;
 
 	    key.data = name_list;
-	    key.size = name_size;
+	    key.size = strlen(name_list);
 
 	    _nc_STRCPY(buffer + 1,
 		       term_names,

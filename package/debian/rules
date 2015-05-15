@@ -56,12 +56,15 @@ configure-stamp:
 		--enable-warnings \
 		--enable-widec \
 		--verbose \
+		--with-chtype=uint32_t \
+		--with-mmask_t=uint32_t \
 		--with-develop \
 		--with-shared \
 		--with-termlib \
 		--with-ticlib \
 		--with-trace \
 		--with-cxx-shared \
+		--with-versioned-syms \
 		--with-xterm-kbs=DEL \
 		--without-ada \
 		--without-debug \

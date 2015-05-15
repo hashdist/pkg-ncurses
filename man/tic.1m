@@ -1,5 +1,5 @@
 .\"***************************************************************************
-.\" Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+.\" Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
 .\"                                                                          *
 .\" Permission is hereby granted, free of charge, to any person obtaining a  *
 .\" copy of this software and associated documentation files (the            *
@@ -26,8 +26,12 @@
 .\" authorization.                                                           *
 .\"***************************************************************************
 .\"
-.\" $Id: tic.1m,v 1.57 2013/02/02 22:09:02 tom Exp $
+.\" $Id: tic.1m,v 1.60 2014/05/24 22:00:11 tom Exp $
 .TH @TIC@ 1M ""
+.ie \n(.g .ds `` \(lq
+.el       .ds `` ``
+.ie \n(.g .ds '' \(rq
+.el       .ds '' ''
 .ds n 5
 .ds d @TERMINFO@
 .de bP
@@ -148,6 +152,20 @@ but commented out with two preceding dots.
 The actual format used incorporates some improvements for escaped characters
 from terminfo format.
 For a stricter BSD-compatible translation, add the \fB\-K\fR option.
+.IP
+If this is combined with \fB\-c\fR, \fB@TIC@\fR makes additional checks
+to report cases where the terminfo values do not have an exact equivalent
+in termcap form.
+For example:
+.RS
+.bP
+\fBsgr\fP usually will not convert, because termcap lacks the ability to
+work with more than two parameters, and because termcap lacks many of
+the arithmetic/logical operators used in terminfo.
+.bP
+capabilities with more than one delay or with delays before the end of
+the string will not convert completely.
+.RE
 .TP
 \fB\-c\fR
 tells \fB@TIC@\fP to only check \fIfile\fR for errors, including syntax problems and
@@ -160,6 +178,11 @@ as well as buggy checking for the buffer length
 (and a documented limit in terminfo),
 these entries may cause core
 dumps with other implementations.
+.IP
+\fB@TIC@\fP checks string capabilities to ensure that those with parameters
+will be valid expressions.
+It does this check only for the predefined string capabilities;
+those which are defined with the \fB\-x\fP option are ignored.
 .TP
 \fB\-D\fR
 tells \fB@TIC@\fP to print the database locations that it knows about, and exit.
@@ -275,7 +298,7 @@ The debug flag levels are as follows:
 Names of files created and linked
 .TP
 2
-Information related to the ``use'' facility
+Information related to the \*(``use\*('' facility
 .TP
 3
 Statistics from the hashing algorithm
@@ -306,7 +329,7 @@ That is, if you supply a capability name which \fB@TIC@\fP does not recognize,
 it will infer its type (boolean, number or string) from the syntax and
 make an extended table entry for that.
 User-defined capability strings
-whose name begins with ``k'' are treated as function keys.
+whose name begins with \*(``k\*('' are treated as function keys.
 .SS PARAMETERS
 .TP
 \fIfile\fR
@@ -315,7 +338,7 @@ format [see \fBterminfo\fR(\*n)].
 Each description in the file
 describes the capabilities of a particular terminal.
 .IP
-If \fIfile\fR is ``-'', then the data is read from the standard input.
+If \fIfile\fR is \*(``-\*('', then the data is read from the standard input.
 The \fIfile\fR parameter may also be the path of a character-device.
 .SS PROCESSING
 .PP

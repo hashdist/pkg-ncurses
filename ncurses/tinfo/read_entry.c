@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -41,11 +41,13 @@
 
 #include <tic.h>
 
-MODULE_ID("$Id: read_entry.c,v 1.122 2013/05/04 22:53:42 tom Exp $")
+MODULE_ID("$Id: read_entry.c,v 1.128 2014/06/14 22:30:41 tom Exp $")
 
 #define TYPE_CALLOC(type,elts) typeCalloc(type, (unsigned)(elts))
 
-#if USE_DATABASE
+#define MyNumber(n) (short) LOW_MSB(n)
+
+#if NCURSES_USE_DATABASE
 static void
 convert_shorts(char *buf, short *Numbers, int count)
 {
@@ -56,7 +58,7 @@ convert_shorts(char *buf, short *Numbers, int count)
 	else if (IS_NEG2(buf + 2 * i))
 	    Numbers[i] = CANCELLED_NUMERIC;
 	else
-	    Numbers[i] = (short) LOW_MSB(buf + 2 * i);
+	    Numbers[i] = MyNumber(buf + 2 * i);
 	TR(TRACE_DATABASE, ("get Numbers[%d]=%d", i, Numbers[i]));
     }
 }
@@ -72,10 +74,10 @@ convert_strings(char *buf, char **Strings, int count, int size, char *table)
 	    Strings[i] = ABSENT_STRING;
 	} else if (IS_NEG2(buf + 2 * i)) {
 	    Strings[i] = CANCELLED_STRING;
-	} else if ((int) LOW_MSB(buf + 2 * i) > size) {
+	} else if (MyNumber(buf + 2 * i) > size) {
 	    Strings[i] = ABSENT_STRING;
 	} else {
-	    Strings[i] = (LOW_MSB(buf + 2 * i) + table);
+	    Strings[i] = (MyNumber(buf + 2 * i) + table);
 	    TR(TRACE_DATABASE, ("Strings[%d] = %s", i, _nc_visbuf(Strings[i])));
 	}
 
@@ -107,13 +109,61 @@ fake_read(char *src, int *offset, int limit, char *dst, unsigned want)
     return (int) want;
 }
 
-#define Read(buf, count) fake_read(buffer, &offset, limit, buf, (unsigned) count)
+#define Read(buf, count) fake_read(buffer, &offset, limit, (char *) buf, (unsigned) count)
 
 #define read_shorts(buf, count) \
 	(Read(buf, (count)*2) == (int) (count)*2)
 
 #define even_boundary(value) \
     if ((value) % 2 != 0) Read(buf, 1)
+#endif
+
+NCURSES_EXPORT(void)
+_nc_init_termtype(TERMTYPE *const tp)
+{
+    unsigned i;
+
+#if NCURSES_XNAMES
+    tp->num_Booleans = BOOLCOUNT;
+    tp->num_Numbers = NUMCOUNT;
+    tp->num_Strings = STRCOUNT;
+    tp->ext_Booleans = 0;
+    tp->ext_Numbers = 0;
+    tp->ext_Strings = 0;
+#endif
+    if (tp->Booleans == 0)
+	TYPE_MALLOC(NCURSES_SBOOL, BOOLCOUNT, tp->Booleans);
+    if (tp->Numbers == 0)
+	TYPE_MALLOC(short, NUMCOUNT, tp->Numbers);
+    if (tp->Strings == 0)
+	TYPE_MALLOC(char *, STRCOUNT, tp->Strings);
+
+    for_each_boolean(i, tp)
+	tp->Booleans[i] = FALSE;
+
+    for_each_number(i, tp)
+	tp->Numbers[i] = ABSENT_NUMERIC;
+
+    for_each_string(i, tp)
+	tp->Strings[i] = ABSENT_STRING;
+}
+
+#if NCURSES_USE_DATABASE
+#if NCURSES_XNAMES
+static bool
+valid_shorts(char *buffer, int limit)
+{
+    bool result = FALSE;
+    int n;
+    for (n = 0; n < limit; ++n) {
+	if (MyNumber(buffer + (n * 2)) > 0) {
+	    result = TRUE;
+	    break;
+	}
+    }
+    return result;
+}
+#endif
 
 /*
  * Return TGETENT_YES if read, TGETENT_NO if not found or garbled.
@@ -138,11 +188,11 @@ _nc_read_termtype(TERMTYPE *ptr, char *buffer, int limit)
 	return (TGETENT_NO);
     }
 
-    name_size = LOW_MSB(buf + 2);
-    bool_count = LOW_MSB(buf + 4);
-    num_count = LOW_MSB(buf + 6);
-    str_count = LOW_MSB(buf + 8);
-    str_size = LOW_MSB(buf + 10);
+    name_size = MyNumber(buf + 2);
+    bool_count = MyNumber(buf + 4);
+    num_count = MyNumber(buf + 6);
+    str_count = MyNumber(buf + 8);
+    str_size = MyNumber(buf + 10);
 
     TR(TRACE_DATABASE,
        ("TERMTYPE name_size=%d, bool=%d/%d, num=%d/%d str=%d/%d(%d)",
@@ -205,8 +255,9 @@ _nc_read_termtype(TERMTYPE *ptr, char *buffer, int limit)
     }
     convert_shorts(buf, ptr->Numbers, num_count);
 
-    if ((ptr->Strings = TYPE_CALLOC(char *, max(STRCOUNT, str_count))) == 0)
-	  return (TGETENT_NO);
+    if ((ptr->Strings = TYPE_CALLOC(char *, max(STRCOUNT, str_count))) == 0) {
+	return (TGETENT_NO);
+    }
 
     if (str_count) {
 	/* grab the string offsets */
@@ -214,8 +265,9 @@ _nc_read_termtype(TERMTYPE *ptr, char *buffer, int limit)
 	    return (TGETENT_NO);
 	}
 	/* finally, grab the string table itself */
-	if (Read(string_table, (unsigned) str_size) != str_size)
+	if (Read(string_table, (unsigned) str_size) != str_size) {
 	    return (TGETENT_NO);
+	}
 	convert_strings(buf, ptr->Strings, str_count, str_size, string_table);
     }
 #if NCURSES_XNAMES
@@ -229,12 +281,12 @@ _nc_read_termtype(TERMTYPE *ptr, char *buffer, int limit)
      */
     even_boundary(str_size);
     TR(TRACE_DATABASE, ("READ extended_header @%d", offset));
-    if (_nc_user_definable && read_shorts(buf, 5)) {
-	int ext_bool_count = LOW_MSB(buf + 0);
-	int ext_num_count = LOW_MSB(buf + 2);
-	int ext_str_count = LOW_MSB(buf + 4);
-	int ext_str_size = LOW_MSB(buf + 6);
-	int ext_str_limit = LOW_MSB(buf + 8);
+    if (_nc_user_definable && read_shorts(buf, 5) && valid_shorts(buf, 5)) {
+	int ext_bool_count = MyNumber(buf + 0);
+	int ext_num_count = MyNumber(buf + 2);
+	int ext_str_count = MyNumber(buf + 4);
+	int ext_str_size = MyNumber(buf + 6);
+	int ext_str_limit = MyNumber(buf + 8);
 	unsigned need = (unsigned) (ext_bool_count + ext_num_count + ext_str_count);
 	int base = 0;
 
@@ -245,8 +297,9 @@ _nc_read_termtype(TERMTYPE *ptr, char *buffer, int limit)
 	    || ext_num_count < 0
 	    || ext_str_count < 0
 	    || ext_str_size < 0
-	    || ext_str_limit < 0)
+	    || ext_str_limit < 0) {
 	    return (TGETENT_NO);
+	}
 
 	ptr->num_Booleans = UShort(BOOLCOUNT + ext_bool_count);
 	ptr->num_Numbers = UShort(NUMCOUNT + ext_num_count);
@@ -264,36 +317,42 @@ _nc_read_termtype(TERMTYPE *ptr, char *buffer, int limit)
 			    ext_bool_count, offset));
 	if ((ptr->ext_Booleans = UShort(ext_bool_count)) != 0) {
 	    if (Read(ptr->Booleans + BOOLCOUNT, (unsigned)
-		     ext_bool_count) != ext_bool_count)
+		     ext_bool_count) != ext_bool_count) {
 		return (TGETENT_NO);
+	    }
 	}
 	even_boundary(ext_bool_count);
 
 	TR(TRACE_DATABASE, ("READ %d extended-numbers @%d",
 			    ext_num_count, offset));
 	if ((ptr->ext_Numbers = UShort(ext_num_count)) != 0) {
-	    if (!read_shorts(buf, ext_num_count))
+	    if (!read_shorts(buf, ext_num_count)) {
 		return (TGETENT_NO);
+	    }
 	    TR(TRACE_DATABASE, ("Before converting extended-numbers"));
 	    convert_shorts(buf, ptr->Numbers + NUMCOUNT, ext_num_count);
 	}
 
 	TR(TRACE_DATABASE, ("READ extended-offsets @%d", offset));
-	if ((unsigned) (ext_str_count + (int) need) >= (MAX_ENTRY_SIZE / 2))
+	if ((unsigned) (ext_str_count + (int) need) >= (MAX_ENTRY_SIZE / 2)) {
 	    return (TGETENT_NO);
+	}
 	if ((ext_str_count || need)
-	    && !read_shorts(buf, ext_str_count + (int) need))
+	    && !read_shorts(buf, ext_str_count + (int) need)) {
 	    return (TGETENT_NO);
+	}
 
 	TR(TRACE_DATABASE, ("READ %d bytes of extended-strings @%d",
 			    ext_str_limit, offset));
 
 	if (ext_str_limit) {
 	    ptr->ext_str_table = typeMalloc(char, (size_t) ext_str_limit);
-	    if (ptr->ext_str_table == 0)
+	    if (ptr->ext_str_table == 0) {
 		return (TGETENT_NO);
-	    if (Read(ptr->ext_str_table, (unsigned) ext_str_limit) != ext_str_limit)
+	    }
+	    if (Read(ptr->ext_str_table, (unsigned) ext_str_limit) != ext_str_limit) {
 		return (TGETENT_NO);
+	    }
 	    TR(TRACE_DATABASE, ("first extended-string is %s", _nc_visbuf(ptr->ext_str_table)));
 	}
 
@@ -317,10 +376,12 @@ _nc_read_termtype(TERMTYPE *ptr, char *buffer, int limit)
 	}
 
 	if (need) {
-	    if (ext_str_count >= (MAX_ENTRY_SIZE / 2))
+	    if (ext_str_count >= (MAX_ENTRY_SIZE / 2)) {
 		return (TGETENT_NO);
-	    if ((ptr->ext_Names = TYPE_CALLOC(char *, need)) == 0)
-		  return (TGETENT_NO);
+	    }
+	    if ((ptr->ext_Names = TYPE_CALLOC(char *, need)) == 0) {
+		return (TGETENT_NO);
+	    }
 	    TR(TRACE_DATABASE,
 	       ("ext_NAMES starting @%d in extended_strings, first = %s",
 		base, _nc_visbuf(ptr->ext_str_table + base)));
@@ -404,9 +465,9 @@ make_db_filename(char *filename, unsigned limit, const char *const path)
 {
     static const char suffix[] = DBM_SUFFIX;
 
-    unsigned lens = sizeof(suffix) - 1;
-    unsigned size = strlen(path);
-    unsigned test = lens + size;
+    size_t lens = sizeof(suffix) - 1;
+    size_t size = strlen(path);
+    size_t test = lens + size;
     bool result = FALSE;
 
     if (test < limit) {
@@ -432,7 +493,7 @@ make_dir_filename(char *filename,
 {
     bool result = FALSE;
 
-#if USE_TERMCAP
+#if NCURSES_USE_TERMCAP
     if (_nc_is_dir_path(path))
 #endif
     {
@@ -490,7 +551,7 @@ _nc_read_tic_entry(char *filename,
 	 * (source/binary) by checking the lengths.
 	 */
 	while (_nc_db_get(capdbp, &key, &data) == 0) {
-	    int used = data.size - 1;
+	    int used = (int) data.size - 1;
 	    char *have = (char *) data.data;
 
 	    if (*have++ == 0) {
@@ -524,7 +585,7 @@ _nc_read_tic_entry(char *filename,
     if (make_dir_filename(filename, limit, path, name)) {
 	code = _nc_read_file_entry(filename, tp);
     }
-#if USE_TERMCAP
+#if NCURSES_USE_TERMCAP
     else if (code != TGETENT_YES) {
 	code = _nc_read_termcap_entry(name, tp);
 	_nc_SPRINTF(filename, _nc_SLIMIT(PATH_MAX)
@@ -533,7 +594,7 @@ _nc_read_tic_entry(char *filename,
 #endif
     return code;
 }
-#endif /* USE_DATABASE */
+#endif /* NCURSES_USE_DATABASE */
 
 /*
  *	_nc_read_entry(char *name, char *filename, TERMTYPE *tp)
@@ -559,7 +620,7 @@ _nc_read_entry(const char *const name, char *const filename, TERMTYPE *const tp)
 	|| strchr(name, NCURSES_PATHSEP) != 0) {
 	TR(TRACE_DATABASE, ("illegal or missing entry name '%s'", name));
     } else {
-#if USE_DATABASE
+#if NCURSES_USE_DATABASE
 	DBDIRS state;
 	int offset;
 	const char *path;
@@ -573,7 +634,7 @@ _nc_read_entry(const char *const name, char *const filename, TERMTYPE *const tp)
 		break;
 	    }
 	}
-#elif USE_TERMCAP
+#elif NCURSES_USE_TERMCAP
 	if (code != TGETENT_YES) {
 	    code = _nc_read_termcap_entry(name, tp);
 	    _nc_SPRINTF(filename, _nc_SLIMIT(PATH_MAX)

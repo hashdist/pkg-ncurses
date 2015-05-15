@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -48,7 +48,7 @@
 #include <locale.h>
 #endif
 
-MODULE_ID("$Id: lib_setup.c,v 1.155 2012/12/15 19:04:54 tom Exp $")
+MODULE_ID("$Id: lib_setup.c,v 1.161 2014/11/01 12:33:16 tom Exp $")
 
 /****************************************************************************
  *
@@ -283,7 +283,7 @@ _nc_get_screensize(SCREEN *sp,
     TCB = (TERMINAL_CONTROL_BLOCK *) termp;
 
     my_tabsize = TCB->info.tabsize;
-    TCB->drv->size(TCB, linep, colp);
+    TCB->drv->td_size(TCB, linep, colp);
 
 #if USE_REENTRANT
     if (sp != 0) {
@@ -321,7 +321,7 @@ _nc_get_screensize(SCREEN *sp,
 #endif
 #if HAVE_SIZECHANGE
 	/* try asking the OS */
-	if (isatty(cur_term->Filedes)) {
+	if (NC_ISATTY(cur_term->Filedes)) {
 	    STRUCT_WINSIZE size;
 
 	    errno = 0;
@@ -423,7 +423,7 @@ _nc_update_screensize(SCREEN *sp)
 
     assert(sp != 0);
 
-    CallDriver_2(sp, getsize, &old_lines, &old_cols);
+    CallDriver_2(sp, td_getsize, &old_lines, &old_cols);
 
 #else
     TERMINAL *termp = cur_term;
@@ -455,7 +455,7 @@ _nc_update_screensize(SCREEN *sp)
  *
  ****************************************************************************/
 
-#if USE_DATABASE || USE_TERMCAP
+#if NCURSES_USE_DATABASE || NCURSES_USE_TERMCAP
 /*
  * Return 1 if entry found, 0 if not found, -1 if database not accessible,
  * just like tgetent().
@@ -574,7 +574,7 @@ NCURSES_EXPORT(int)
 _nc_locale_breaks_acs(TERMINAL * termp)
 {
     const char *env_name = "NCURSES_NO_UTF8_ACS";
-    char *env;
+    const char *env;
     int value;
     int result = 0;
 
@@ -655,7 +655,7 @@ TINFO_SETUP_TERM(TERMINAL ** tp,
      * Allow output redirection.  This is what SVr3 does.  If stdout is
      * directed to a file, screen updates go to standard error.
      */
-    if (Filedes == STDOUT_FILENO && !isatty(Filedes))
+    if (Filedes == STDOUT_FILENO && !NC_ISATTY(Filedes))
 	Filedes = STDERR_FILENO;
 
     /*
@@ -687,7 +687,9 @@ TINFO_SETUP_TERM(TERMINAL ** tp,
 #endif
     } else {
 #ifdef USE_TERM_DRIVER
-	termp = (TERMINAL *) typeCalloc(TERMINAL_CONTROL_BLOCK, 1);
+	TERMINAL_CONTROL_BLOCK *my_tcb;
+	my_tcb = typeCalloc(TERMINAL_CONTROL_BLOCK, 1);
+	termp = &(my_tcb->term);
 #else
 	termp = typeCalloc(TERMINAL, 1);
 #endif
@@ -707,7 +709,7 @@ TINFO_SETUP_TERM(TERMINAL ** tp,
 		       "Could not find any driver to handle this terminal.\n");
 	}
 #else
-#if USE_DATABASE || USE_TERMCAP
+#if NCURSES_USE_DATABASE || NCURSES_USE_TERMCAP
 	status = _nc_setup_tinfo(tname, &termp->type);
 #else
 	status = TGETENT_NO;
@@ -750,7 +752,7 @@ TINFO_SETUP_TERM(TERMINAL ** tp,
 	 * _nc_setupscreen().  Do it now anyway, so we can initialize the
 	 * baudrate.
 	 */
-	if (isatty(Filedes)) {
+	if (NC_ISATTY(Filedes)) {
 	    def_prog_mode();
 	    baudrate();
 	}
@@ -761,7 +763,7 @@ TINFO_SETUP_TERM(TERMINAL ** tp,
 #ifdef USE_TERM_DRIVER
     *tp = termp;
     NCURSES_SP_NAME(set_curterm) (sp, termp);
-    TCB->drv->init(TCB);
+    TCB->drv->td_init(TCB);
 #else
     sp = SP;
 #endif
@@ -783,14 +785,12 @@ TINFO_SETUP_TERM(TERMINAL ** tp,
 	if ((VALID_STRING(cursor_address)
 	     || (VALID_STRING(cursor_down) && VALID_STRING(cursor_home)))
 	    && VALID_STRING(clear_screen)) {
-	    free(termp);
 	    ret_error1(TGETENT_YES, "terminal is not really generic.\n", tname);
 	} else {
-	    free(termp);
+	    del_curterm(termp);
 	    ret_error1(TGETENT_NO, "I need something more specific.\n", tname);
 	}
     } else if (hard_copy) {
-	free(termp);
 	ret_error1(TGETENT_YES, "I can't handle hardcopy terminals.\n", tname);
     }
 #endif

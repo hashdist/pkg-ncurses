@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -43,10 +43,12 @@
 #include <sys/stat.h>
 
 #include <dump_entry.h>
+#include <tparm_type.h>
 #include <hashed_db.h>
+#include <parametrized.h>
 #include <transform.h>
 
-MODULE_ID("$Id: tic.c,v 1.185 2013/03/17 00:57:05 tom Exp $")
+MODULE_ID("$Id: tic.c,v 1.208 2014/10/18 09:34:29 tom Exp $")
 
 #define STDIN_NAME "<stdin>"
 
@@ -143,7 +145,6 @@ usage(void)
 #if NCURSES_XNAMES
 	"  -a         retain commented-out capabilities (sets -x also)",
 #endif
-	"  -K         translate entries to termcap source form with BSD syntax",
 	"  -C         translate entries to termcap source form",
 	"  -D         print list of tic's database locations (first must be writable)",
 	"  -c         check only, validate input without compiling or translating",
@@ -152,6 +153,7 @@ usage(void)
 	"  -G         format %{number} to %'char'",
 	"  -g         format %'char' to %{number}",
 	"  -I         translate entries to terminfo source form",
+	"  -K         translate entries to termcap source form with BSD syntax",
 	"  -L         translate entries to full terminfo source form",
 	"  -N         disable smart defaults for source translation",
 	"  -o<dir>    set output directory for compiled entry writes",
@@ -380,11 +382,11 @@ open_tempfile(char *filename)
     _nc_STRCPY(filename, "/tmp/XXXXXX", PATH_MAX);
 #if HAVE_MKSTEMP
     {
-	int oldmask = umask(077);
+	int oldmask = (int) umask(077);
 	int fd = mkstemp(filename);
 	if (fd >= 0)
 	    result = fdopen(fd, "w");
-	umask(oldmask);
+	umask((mode_t) oldmask);
     }
 #else
     if (tmpnam(filename) != 0)
@@ -450,7 +452,7 @@ open_input(const char *filename, char *alt_file)
 	fprintf(stderr, "%s: %s %s\n", _nc_progname, filename, strerror(errno));
 	ExitProgram(EXIT_FAILURE);
     } else if ((mode = (sb.st_mode & S_IFMT)) == S_IFDIR
-	       || (mode != S_IFREG && mode != S_IFCHR)) {
+	       || (mode != S_IFREG && mode != S_IFCHR && mode != S_IFIFO)) {
 	fprintf(stderr, "%s: %s is not a file\n", _nc_progname, filename);
 	ExitProgram(EXIT_FAILURE);
     } else {
@@ -939,7 +941,7 @@ main(int argc, char *argv[])
     }
 
     /* length check */
-    if (check_only && (capdump || infodump)) {
+    if (check_only && limited && (capdump || infodump)) {
 	for_entry_list(qp) {
 	    if (matches(namelst, qp->tterm.term_names)) {
 		int len = fmt_entry(&qp->tterm, NULL, FALSE, TRUE, infodump, numbers);
@@ -1114,6 +1116,17 @@ check_colors(TERMTYPE *tp)
 	if (!VALID_STRING(orig_pair) && !VALID_STRING(orig_colors))
 	    _nc_warning("expected either op/oc string for resetting colors");
     }
+    if (can_change) {
+	if (!VALID_STRING(initialize_pair) &&
+	    !VALID_STRING(initialize_color)) {
+	    _nc_warning("expected initc or initp because ccc is given");
+	}
+    } else {
+	if (VALID_STRING(initialize_pair) ||
+	    VALID_STRING(initialize_color)) {
+	    _nc_warning("expected ccc because initc is given");
+	}
+    }
 }
 
 static char
@@ -1140,7 +1153,7 @@ keypad_index(const char *string)
     long result = -1;
 
     if ((ch = keypad_final(string)) != '\0') {
-	test = strchr(list, ch);
+	test = (strchr) (list, ch);
 	if (test != 0)
 	    result = (long) (test - list);
     }
@@ -1224,12 +1237,62 @@ check_ansi_cursor(char *list[4])
 }
 
 #define EXPECTED(name) if (!PRESENT(name)) _nc_warning("expected " #name)
+#define UNEXPECTED(name) if (PRESENT(name)) _nc_warning("unexpected " #name ", for %s", why)
+
+static void
+check_noaddress(TERMTYPE *tp, const char *why)
+{
+    UNEXPECTED(column_address);
+    UNEXPECTED(cursor_address);
+    UNEXPECTED(cursor_home);
+    UNEXPECTED(cursor_mem_address);
+    UNEXPECTED(cursor_to_ll);
+    UNEXPECTED(row_address);
+    UNEXPECTED(row_address);
+}
 
 static void
 check_cursor(TERMTYPE *tp)
 {
     int count;
     char *list[4];
+
+    if (hard_copy) {
+	check_noaddress(tp, "hard_copy");
+    } else if (generic_type) {
+	check_noaddress(tp, "generic_type");
+    } else if (strchr(tp->term_names, '+') == 0) {
+	int y = 0;
+	int x = 0;
+	if (PRESENT(column_address))
+	    ++y;
+	if (PRESENT(cursor_address))
+	    y = x = 10;
+	if (PRESENT(cursor_home))
+	    ++y, ++x;
+	if (PRESENT(cursor_mem_address))
+	    y = x = 10;
+	if (PRESENT(cursor_to_ll))
+	    ++y, ++x;
+	if (PRESENT(row_address))
+	    ++x;
+	if (PRESENT(cursor_down))
+	    ++y;
+	if (PRESENT(cursor_up))
+	    ++y;
+	if (PRESENT(cursor_left))
+	    ++x;
+	if (PRESENT(cursor_right))
+	    ++x;
+	if (x < 2 && y < 2) {
+	    _nc_warning("terminal lacks cursor addressing");
+	} else {
+	    if (x < 2)
+		_nc_warning("terminal lacks cursor column-addressing");
+	    if (y < 2)
+		_nc_warning("terminal lacks cursor row-addressing");
+	}
+    }
 
     /* it is rare to have an insert-line feature without a matching delete */
     ANDMISSING(parm_insert_line, insert_line);
@@ -1412,7 +1475,7 @@ check_keypad(TERMTYPE *tp)
 
     /*
      * These warnings are useful for consistency checks - it is possible that
-     * there are real terminals with mismatches in these 
+     * there are real terminals with mismatches in these
      */
     ANDMISSING(key_ic, key_dc);
 }
@@ -1456,6 +1519,7 @@ uses_SGR_39_49(const char *value)
 static void
 check_screen(TERMTYPE *tp)
 {
+#if NCURSES_XNAMES
     if (_nc_user_definable) {
 	int have_XT = tigetflag("XT");
 	int have_XM = tigetflag("XM");
@@ -1507,6 +1571,7 @@ check_screen(TERMTYPE *tp)
 		_nc_warning("Expected XT to be set, given kmous");
 	}
     }
+#endif
 }
 
 /*
@@ -1611,7 +1676,7 @@ check_params(TERMTYPE *tp, const char *name, char *value)
     int expected = expected_params(name);
     int actual = 0;
     int n;
-    bool params[10];
+    bool params[NUM_PARM];
     char *s = value;
 
 #ifdef set_top_margin_parm
@@ -1620,7 +1685,7 @@ check_params(TERMTYPE *tp, const char *name, char *value)
 	expected = 2;
 #endif
 
-    for (n = 0; n < 10; n++)
+    for (n = 0; n < NUM_PARM; n++)
 	params[n] = FALSE;
 
     while (*s != 0) {
@@ -1654,6 +1719,228 @@ check_params(TERMTYPE *tp, const char *name, char *value)
 	for (n = 1; n < actual; n++) {
 	    if (!params[n])
 		_nc_warning("%s omits parameter %d", name, n);
+	}
+    }
+}
+
+static char *
+check_1_infotocap(const char *name, NCURSES_CONST char *value, int count)
+{
+    int k;
+    int ignored;
+    long numbers[1 + NUM_PARM];
+    char *strings[1 + NUM_PARM];
+    char *p_is_s[NUM_PARM];
+    char *result;
+    char blob[NUM_PARM * 10];
+    char *next = blob;
+
+    *next++ = '\0';
+    for (k = 1; k <= NUM_PARM; k++) {
+	numbers[k] = count;
+	sprintf(next, "XYZ%d", count);
+	strings[k] = next;
+	next += strlen(next) + 1;
+    }
+
+    switch (tparm_type(name)) {
+    case Num_Str:
+	result = TPARM_2(value, numbers[1], strings[2]);
+	break;
+    case Num_Str_Str:
+	result = TPARM_3(value, numbers[1], strings[2], strings[3]);
+	break;
+    case Numbers:
+    default:
+	(void) _nc_tparm_analyze(value, p_is_s, &ignored);
+#define myParam(n) (p_is_s[n - 1] != 0 ? ((TPARM_ARG) strings[n]) : numbers[n])
+	result = TPARM_9(value,
+			 myParam(1),
+			 myParam(2),
+			 myParam(3),
+			 myParam(4),
+			 myParam(5),
+			 myParam(6),
+			 myParam(7),
+			 myParam(8),
+			 myParam(9));
+	break;
+    }
+    return result;
+}
+
+#define IsDelay(ch) ((ch) == '.' || isdigit(UChar(ch)))
+
+static const char *
+parse_delay_value(const char *src, double *delays, int *always)
+{
+    int star = 0;
+
+    *delays = 0.0;
+    if (always)
+	*always = 0;
+
+    while (isdigit(UChar(*src))) {
+	(*delays) = (*delays) * 10 + (*src++ - '0');
+    }
+    if (*src == '.') {
+	int gotdot = 1;
+
+	++src;
+	while (isdigit(UChar(*src))) {
+	    gotdot *= 10;
+	    (*delays) += (*src++ - '0') / gotdot;
+	}
+    }
+    while (*src == '*' || *src == '/') {
+	if (always == 0 && *src == '/')
+	    break;
+	if (*src++ == '*') {
+	    star = 1;
+	} else {
+	    *always = 1;
+	}
+    }
+    if (star)
+	*delays = -(*delays);
+    return src;
+}
+
+static const char *
+parse_ti_delay(const char *ti, double *delays)
+{
+    *delays = 0.0;
+    while (*ti != '\0') {
+	if (*ti == '\\') {
+	    ++ti;
+	}
+	if (ti[0] == '$'
+	    && ti[1] == '<'
+	    && IsDelay(UChar(ti[2]))) {
+	    int ignored;
+	    const char *last = parse_delay_value(ti + 2, delays, &ignored);
+	    if (*last == '>') {
+		ti = last;
+	    }
+	} else {
+	    ++ti;
+	}
+    }
+    return ti;
+}
+
+static const char *
+parse_tc_delay(const char *tc, double *delays)
+{
+    return parse_delay_value(tc, delays, (int *) 0);
+}
+
+/*
+ * Compare terminfo- and termcap-strings, factoring out delays.
+ */
+static bool
+same_ti_tc(const char *ti, const char *tc, bool * embedded)
+{
+    bool same = TRUE;
+    double ti_delay = 0.0;
+    double tc_delay = 0.0;
+    const char *ti_last;
+
+    *embedded = FALSE;
+    ti_last = parse_ti_delay(ti, &ti_delay);
+    tc = parse_tc_delay(tc, &tc_delay);
+
+    while ((ti < ti_last) && *tc) {
+	if (*ti == '\\' && ispunct(UChar(ti[1]))) {
+	    ++ti;
+	    if ((*ti == '^') && !strncmp(tc, "\\136", 4)) {
+		ti += 1;
+		tc += 4;
+		continue;
+	    }
+	} else if (ti[0] == '$' && ti[1] == '<') {
+	    double no_delay;
+	    const char *ss = parse_ti_delay(ti, &no_delay);
+	    if (ss != ti) {
+		*embedded = TRUE;
+		ti = ss;
+		continue;
+	    }
+	}
+	if (*tc == '\\' && ispunct(UChar(tc[1]))) {
+	    ++tc;
+	}
+	if (*ti++ != *tc++) {
+	    same = FALSE;
+	    break;
+	}
+    }
+
+    if (*embedded) {
+	if (same) {
+	    same = FALSE;
+	} else {
+	    *embedded = FALSE;	/* report only one problem */
+	}
+    }
+
+    return same;
+}
+
+/*
+ * Check terminfo to termcap translation.
+ */
+static void
+check_infotocap(TERMTYPE *tp, int i, const char *value)
+{
+    const char *name = ExtStrname(tp, i, strnames);
+    int params = (((i < (int) SIZEOF(parametrized)) &&
+		   (i < STRCOUNT))
+		  ? parametrized[i]
+		  : ((*value == 'k')
+		     ? 0
+		     : has_params(value)));
+    int to_char = 0;
+    char *ti_value;
+    char *tc_value;
+    bool embedded;
+
+    if ((ti_value = _nc_tic_expand(value, TRUE, to_char)) == ABSENT_STRING) {
+	_nc_warning("tic-expansion of %s failed", name);
+    } else if ((tc_value = _nc_infotocap(name, ti_value, params)) == ABSENT_STRING) {
+	_nc_warning("tic-conversion of %s failed", name);
+    } else if (params > 0) {
+	int limit = 5;
+	int count;
+	bool first = TRUE;
+
+	if (!strcmp(name, "setf")
+	    || !strcmp(name, "setb")
+	    || !strcmp(name, "setaf")
+	    || !strcmp(name, "setab")) {
+	    limit = max_colors;
+	}
+	for (count = 0; count < limit; ++count) {
+	    char *ti_check = check_1_infotocap(name, ti_value, count);
+	    char *tc_check = check_1_infotocap(name, tc_value, count);
+
+	    if (strcmp(ti_check, tc_check)) {
+		if (first) {
+		    fprintf(stderr, "check_infotocap(%s)\n", name);
+		    fprintf(stderr, "...ti '%s'\n", ti_value);
+		    fprintf(stderr, "...tc '%s'\n", tc_value);
+		    first = FALSE;
+		}
+		_nc_warning("tparm-conversion of %s(%d) differs between\n\tterminfo %s\n\ttermcap  %s",
+			    name, count, ti_check, tc_check);
+	    }
+	}
+    } else if (params == 0 && !same_ti_tc(ti_value, tc_value, &embedded)) {
+	if (embedded) {
+	    _nc_warning("termcap equivalent of %s cannot use embedded delay", name);
+	} else {
+	    _nc_warning("tic-conversion of %s changed value\n\tfrom %s\n\tto   %s",
+			name, ti_value, tc_value);
 	}
     }
 }
@@ -1884,20 +2171,17 @@ show_fkey_name(NAME_VALUE * data)
     }
 }
 
-/* other sanity-checks (things that we don't want in the normal
- * logic that reads a terminfo entry)
+/*
+ * A terminal entry may contain more than one keycode assigned to a given
+ * string (e.g., KEY_END and KEY_LL).  But curses will only return one (the
+ * last one assigned).
  */
 static void
-check_termtype(TERMTYPE *tp, bool literal)
+check_conflict(TERMTYPE *tp)
 {
     bool conflict = FALSE;
     unsigned j, k;
 
-    /*
-     * A terminal entry may contain more than one keycode assigned to
-     * a given string (e.g., KEY_END and KEY_LL).  But curses will only
-     * return one (the last one assigned).
-     */
     if (!(_nc_syntax == SYN_TERMCAP && capdump)) {
 	char *check = calloc((size_t) (NUM_STRINGS(tp) + 1), sizeof(char));
 	NAME_VALUE *given = get_fkey_list(tp);
@@ -1938,11 +2222,26 @@ check_termtype(TERMTYPE *tp, bool literal)
 	free(given);
 	free(check);
     }
+}
+
+/* other sanity-checks (things that we don't want in the normal
+ * logic that reads a terminfo entry)
+ */
+static void
+check_termtype(TERMTYPE *tp, bool literal)
+{
+    unsigned j;
+
+    check_conflict(tp);
 
     for_each_string(j, tp) {
 	char *a = tp->Strings[j];
-	if (VALID_STRING(a))
+	if (VALID_STRING(a)) {
 	    check_params(tp, ExtStrname(tp, (int) j, strnames), a);
+	    if (capdump) {
+		check_infotocap(tp, (int) j, a);
+	    }
+	}
     }
 
     check_acs(tp);

@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -40,7 +40,7 @@ AUTHOR
    Author: Eric S. Raymond <esr@snark.thyrsus.com> 1993
            Thomas E. Dickey (beginning revision 1.27 in 1996).
 
-$Id: ncurses.c,v 1.389 2013/04/27 19:46:53 tom Exp $
+$Id: ncurses.c,v 1.417 2014/10/10 09:09:41 tom Exp $
 
 ***************************************************************************/
 
@@ -157,9 +157,9 @@ static bool use_colors;		/* true if we use colors */
 static int max_pairs;		/* ...and the number of color pairs */
 
 typedef struct {
-    short red;
-    short green;
-    short blue;
+    NCURSES_COLOR_T red;
+    NCURSES_COLOR_T green;
+    NCURSES_COLOR_T blue;
 } RGB_DATA;
 
 static RGB_DATA *all_colors;
@@ -303,9 +303,9 @@ wGetstring(WINDOW *win, char *buffer, int limit)
 
 #if USE_WIDEC_SUPPORT
 static wchar_t
-fullwidth_of(int ch)
+fullwidth_digit(int ch)
 {
-    return (ch + 0xff10 - '0');
+    return (wchar_t) (ch + 0xff10 - '0');
 }
 
 static void
@@ -313,7 +313,7 @@ make_fullwidth_text(wchar_t *target, const char *source)
 {
     int ch;
     while ((ch = *source++) != 0) {
-	*target++ = fullwidth_of(ch);
+	*target++ = fullwidth_digit(ch);
     }
     *target = 0;
 }
@@ -323,7 +323,7 @@ make_narrow_text(wchar_t *target, const char *source)
 {
     int ch;
     while ((ch = *source++) != 0) {
-	*target++ = ch;
+	*target++ = (wchar_t) ch;
     }
     *target = 0;
 }
@@ -334,7 +334,7 @@ make_fullwidth_digit(cchar_t *target, int digit)
 {
     wchar_t source[2];
 
-    source[0] = fullwidth_of(digit + '0');
+    source[0] = fullwidth_digit(digit + '0');
     source[1] = 0;
     setcchar(target, source, A_NORMAL, 0, 0);
 }
@@ -943,7 +943,7 @@ begin_getch_test(void)
     refresh();
 
 #ifdef NCURSES_MOUSE_VERSION
-    mousemask(ALL_MOUSE_EVENTS, (mmask_t *) 0);
+    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, (mmask_t *) 0);
 #endif
 
     (void) printw("Delay in 10ths of a second (<CR> for blocking input)? ");
@@ -1252,8 +1252,13 @@ my_termattrs(void)
 #define termattrs() my_termattrs()
 #endif
 
-#define MAX_ATTRSTRING 31
-#define LEN_ATTRSTRING 26
+#define ATTRSTRING_1ST 32	/* ' ' */
+#define ATTRSTRING_END 126	/* '~' */
+
+#define COL_ATTRSTRING 25
+#define MARGIN_4_ATTRS (COL_ATTRSTRING + 8)
+#define LEN_ATTRSTRING (COLS - MARGIN_4_ATTRS)
+#define MAX_ATTRSTRING (ATTRSTRING_END + 1 - ATTRSTRING_1ST)
 
 static char attr_test_string[MAX_ATTRSTRING + 1];
 
@@ -1287,6 +1292,10 @@ attr_legend(WINDOW *helpwin)
 	      "  a/A     toggle ACS (alternate character set) mapping");
     MvWPrintw(helpwin, row, col,
 	      "  v/V     toggle video attribute to combine with each line");
+#if USE_WIDEC_SUPPORT
+    MvWPrintw(helpwin, row, col,
+	      "  w/W     toggle normal/wide (double-width) test-characters");
+#endif
 }
 
 static void
@@ -1301,29 +1310,29 @@ show_color_attr(int fg, int bg, int tx)
 }
 
 static bool
-cycle_color_attr(int ch, short *fg, short *bg, short *tx)
+cycle_color_attr(int ch, NCURSES_COLOR_T *fg, NCURSES_COLOR_T *bg, NCURSES_COLOR_T *tx)
 {
     bool error = FALSE;
 
     if (use_colors) {
 	switch (ch) {
 	case 'f':
-	    *fg = (short) (*fg + 1);
+	    *fg = (NCURSES_COLOR_T) (*fg + 1);
 	    break;
 	case 'F':
-	    *fg = (short) (*fg - 1);
+	    *fg = (NCURSES_COLOR_T) (*fg - 1);
 	    break;
 	case 'b':
-	    *bg = (short) (*bg + 1);
+	    *bg = (NCURSES_COLOR_T) (*bg + 1);
 	    break;
 	case 'B':
-	    *bg = (short) (*bg - 1);
+	    *bg = (NCURSES_COLOR_T) (*bg - 1);
 	    break;
 	case 't':
-	    *tx = (short) (*tx + 1);
+	    *tx = (NCURSES_COLOR_T) (*tx + 1);
 	    break;
 	case 'T':
-	    *tx = (short) (*tx - 1);
+	    *tx = (NCURSES_COLOR_T) (*tx - 1);
 	    break;
 	default:
 	    beep();
@@ -1331,17 +1340,17 @@ cycle_color_attr(int ch, short *fg, short *bg, short *tx)
 	    break;
 	}
 	if (*fg >= COLORS)
-	    *fg = (short) min_colors;
+	    *fg = (NCURSES_COLOR_T) min_colors;
 	if (*fg < min_colors)
-	    *fg = (short) (COLORS - 1);
+	    *fg = (NCURSES_COLOR_T) (COLORS - 1);
 	if (*bg >= COLORS)
-	    *bg = (short) min_colors;
+	    *bg = (NCURSES_COLOR_T) min_colors;
 	if (*bg < min_colors)
-	    *bg = (short) (COLORS - 1);
+	    *bg = (NCURSES_COLOR_T) (COLORS - 1);
 	if (*tx >= COLORS)
 	    *tx = -1;
 	if (*tx < -1)
-	    *tx = (short) (COLORS - 1);
+	    *tx = (NCURSES_COLOR_T) (COLORS - 1);
     } else {
 	beep();
 	error = TRUE;
@@ -1352,12 +1361,14 @@ cycle_color_attr(int ch, short *fg, short *bg, short *tx)
 static void
 adjust_attr_string(int adjust)
 {
-    int first = ((int) UChar(attr_test_string[0])) + adjust;
-    int last = first + LEN_ATTRSTRING;
+    char save = attr_test_string[0];
+    int first = ((int) UChar(save)) + adjust;
+    int j, k;
 
-    if (first >= ' ' && last <= '~') {	/* 32..126 */
-	int j, k;
-	for (j = 0, k = first; j < MAX_ATTRSTRING && k <= last; ++j, ++k) {
+    if (first >= ATTRSTRING_1ST) {
+	for (j = 0, k = first; j < MAX_ATTRSTRING; ++j, ++k) {
+	    if (k > ATTRSTRING_END)
+		break;
 	    attr_test_string[j] = (char) k;
 	    if (((k + 1 - first) % 5) == 0) {
 		if (++j >= MAX_ATTRSTRING)
@@ -1365,23 +1376,40 @@ adjust_attr_string(int adjust)
 		attr_test_string[j] = ' ';
 	    }
 	}
-	while (j < MAX_ATTRSTRING)
-	    attr_test_string[j++] = ' ';
-	attr_test_string[j] = '\0';
-    } else {
-	beep();
+	if ((LEN_ATTRSTRING - j) > 5) {
+	    attr_test_string[0] = save;
+	    adjust_attr_string(adjust - 1);
+	} else {
+	    while (j < MAX_ATTRSTRING)
+		attr_test_string[j++] = ' ';
+	    attr_test_string[j] = '\0';
+	}
     }
+}
+
+/*
+ * Prefer the right-end of the string for starting, since that maps to the
+ * VT100 line-drawing.
+ */
+static int
+default_attr_string(void)
+{
+    int result = (ATTRSTRING_END - LEN_ATTRSTRING);
+    result += (LEN_ATTRSTRING / 5);
+    if (result < ATTRSTRING_1ST)
+	result = ATTRSTRING_1ST;
+    return result;
 }
 
 static void
 init_attr_string(void)
 {
-    attr_test_string[0] = 'a';
+    attr_test_string[0] = (char) default_attr_string();
     adjust_attr_string(0);
 }
 
 static int
-show_attr(int row, int skip, bool arrow, chtype attr, const char *name)
+show_attr(WINDOW *win, int row, int skip, bool arrow, chtype attr, const char *name)
 {
     int ncv = get_ncv();
     chtype test = attr & (chtype) (~A_ALTCHARSET);
@@ -1389,7 +1417,7 @@ show_attr(int row, int skip, bool arrow, chtype attr, const char *name)
     if (arrow)
 	MvPrintw(row, 5, "-->");
     MvPrintw(row, 8, "%s mode:", name);
-    MvPrintw(row, 24, "|");
+    MvPrintw(row, COL_ATTRSTRING - 1, "|");
     if (skip)
 	printw("%*s", skip, " ");
     /*
@@ -1397,22 +1425,24 @@ show_attr(int row, int skip, bool arrow, chtype attr, const char *name)
      * character at a time (to pass its rendition directly), and use the
      * string operation for the other attributes.
      */
+    wmove(win, 0, 0);
+    werase(win);
     if (attr & A_ALTCHARSET) {
 	const char *s;
 	chtype ch;
 
 	for (s = attr_test_string; *s != '\0'; ++s) {
 	    ch = UChar(*s);
-	    addch(ch | attr);
+	    (void) waddch(win, ch | attr);
 	}
     } else {
-	(void) attrset(attr);
-	addstr(attr_test_string);
-	attroff(attr);
+	(void) wattrset(win, AttrArg(attr, 0));
+	(void) waddstr(win, attr_test_string);
+	(void) wattroff(win, (int) attr);
     }
     if (skip)
 	printw("%*s", skip, " ");
-    printw("|");
+    MvPrintw(row, COL_ATTRSTRING + LEN_ATTRSTRING, "|");
     if (test != A_NORMAL) {
 	if (!(termattrs() & test)) {
 	    printw(" (N/A)");
@@ -1428,6 +1458,9 @@ show_attr(int row, int skip, bool arrow, chtype attr, const char *name)
 		    A_BOLD,
 #ifdef A_INVIS
 		    A_INVIS,
+#endif
+#ifdef A_ITALIC
+		    A_ITALIC,
 #endif
 		    A_PROTECT,
 		    A_ALTCHARSET
@@ -1450,11 +1483,13 @@ show_attr(int row, int skip, bool arrow, chtype attr, const char *name)
     }
     return row + 2;
 }
+
+typedef struct {
+    attr_t attr;
+    NCURSES_CONST char *name;
+} ATTR_TBL;
 /* *INDENT-OFF* */
-static const struct {
-    chtype			attr;
-    NCURSES_CONST char *	name;
-} attrs_to_test[] = {
+static const ATTR_TBL attrs_to_test[] = {
     { A_STANDOUT,	"STANDOUT" },
     { A_REVERSE,	"REVERSE" },
     { A_BOLD,		"BOLD" },
@@ -1465,12 +1500,36 @@ static const struct {
 #ifdef A_INVIS
     { A_INVIS,		"INVISIBLE" },
 #endif
+#ifdef A_ITALIC
+    { A_ITALIC,		"ITALIC" },
+#endif
     { A_NORMAL,		"NORMAL" },
 };
 /* *INDENT-ON* */
 
+static unsigned
+init_attr_list(ATTR_TBL * target, attr_t attrs)
+{
+    unsigned result = 0;
+    size_t n;
+
+    for (n = 0; n < SIZEOF(attrs_to_test); ++n) {
+	attr_t test = attrs_to_test[n].attr;
+	if (test == A_NORMAL || (test & attrs) != 0) {
+	    target[result++] = attrs_to_test[n];
+	}
+    }
+    return result;
+}
+
 static bool
-attr_getc(int *skip, short *fg, short *bg, short *tx, int *ac, unsigned *kc)
+attr_getc(int *skip,
+	  NCURSES_COLOR_T *fg,
+	  NCURSES_COLOR_T *bg,
+	  NCURSES_COLOR_T *tx,
+	  int *ac,
+	  unsigned *kc,
+	  unsigned limit)
 {
     bool result = TRUE;
     bool error = FALSE;
@@ -1503,13 +1562,13 @@ attr_getc(int *skip, short *fg, short *bg, short *tx, int *ac, unsigned *kc)
 		break;
 	    case 'v':
 		if (*kc == 0)
-		    *kc = SIZEOF(attrs_to_test) - 1;
+		    *kc = limit - 1;
 		else
 		    *kc -= 1;
 		break;
 	    case 'V':
 		*kc += 1;
-		if (*kc >= SIZEOF(attrs_to_test))
+		if (*kc >= limit)
 		    *kc = 0;
 		break;
 	    case '<':
@@ -1536,110 +1595,171 @@ attr_test(void)
 {
     int n;
     int skip = get_xmc();
-    short fg = COLOR_BLACK;	/* color pair 0 is special */
-    short bg = COLOR_BLACK;
-    short tx = -1;
+    NCURSES_COLOR_T fg = COLOR_BLACK;	/* color pair 0 is special */
+    NCURSES_COLOR_T bg = COLOR_BLACK;
+    NCURSES_COLOR_T tx = -1;
     int ac = 0;
     unsigned j, k;
+    WINDOW *my_wins[SIZEOF(attrs_to_test)];
+    ATTR_TBL my_list[SIZEOF(attrs_to_test)];
+    unsigned my_size = init_attr_list(my_list, termattrs());
 
-    if (skip < 0)
-	skip = 0;
-
-    n = skip;			/* make it easy */
-    k = SIZEOF(attrs_to_test) - 1;
-    init_attr_string();
-
-    do {
-	int row = 2;
-	chtype normal = A_NORMAL | BLANK;
-	chtype extras = (chtype) ac;
-
-	if (use_colors) {
-	    short pair = (short) (fg != COLOR_BLACK || bg != COLOR_BLACK);
-	    if (pair != 0) {
-		pair = 1;
-		if (init_pair(pair, fg, bg) == ERR) {
-		    beep();
-		} else {
-		    normal |= (chtype) COLOR_PAIR(pair);
-		}
-	    }
-	    if (tx >= 0) {
-		pair = 2;
-		if (init_pair(pair, tx, bg) == ERR) {
-		    beep();
-		} else {
-		    extras |= (chtype) COLOR_PAIR(pair);
-		}
-	    }
+    if (my_size > 1) {
+	for (j = 0; j < my_size; ++j) {
+	    my_wins[j] = subwin(stdscr,
+				1, LEN_ATTRSTRING,
+				2 + (int) (2 * j), COL_ATTRSTRING);
+	    scrollok(my_wins[j], FALSE);
 	}
-	bkgd(normal);
-	bkgdset(normal);
+
+	if (skip < 0)
+	    skip = 0;
+
+	n = skip;		/* make it easy */
+	k = my_size - 1;
+	init_attr_string();
+
+	do {
+	    int row = 2;
+	    chtype normal = A_NORMAL | BLANK;
+	    chtype extras = (chtype) ac;
+
+	    if (use_colors) {
+		NCURSES_PAIRS_T pair = 0;
+		if ((fg != COLOR_BLACK) || (bg != COLOR_BLACK)) {
+		    pair = 1;
+		    if (init_pair(pair, fg, bg) == ERR) {
+			beep();
+		    } else {
+			normal |= (chtype) COLOR_PAIR(pair);
+		    }
+		}
+		if (tx >= 0) {
+		    pair = 2;
+		    if (init_pair(pair, tx, bg) == ERR) {
+			beep();
+		    } else {
+			extras |= (chtype) COLOR_PAIR(pair);
+			normal &= ~A_COLOR;
+		    }
+		}
+	    }
+	    bkgd(normal);
+	    bkgdset(normal);
+	    erase();
+
+	    box(stdscr, 0, 0);
+	    MvAddStr(0, 20, "Character attribute test display");
+
+	    for (j = 0; j < my_size; ++j) {
+		bool arrow = (j == k);
+		row = show_attr(my_wins[j], row, n, arrow,
+				normal |
+				extras |
+				my_list[j].attr |
+				my_list[k].attr,
+				my_list[j].name);
+	    }
+
+	    MvPrintw(row, 8,
+		     "This terminal does %shave the magic-cookie glitch",
+		     get_xmc() > -1 ? "" : "not ");
+	    MvPrintw(row + 1, 8, "Enter '?' for help.");
+	    show_color_attr(fg, bg, tx);
+	    printw("  ACS (%d)", ac != 0);
+
+	    refresh();
+	} while (attr_getc(&n, &fg, &bg, &tx, &ac, &k, my_size));
+
+	bkgdset(A_NORMAL | BLANK);
 	erase();
-
-	box(stdscr, 0, 0);
-	MvAddStr(0, 20, "Character attribute test display");
-
-	for (j = 0; j < SIZEOF(attrs_to_test); ++j) {
-	    bool arrow = (j == k);
-	    row = show_attr(row, n, arrow,
-			    extras |
-			    attrs_to_test[j].attr |
-			    attrs_to_test[k].attr,
-			    attrs_to_test[j].name);
-	}
-
-	MvPrintw(row, 8,
-		 "This terminal does %shave the magic-cookie glitch",
-		 get_xmc() > -1 ? "" : "not ");
-	MvPrintw(row + 1, 8, "Enter '?' for help.");
-	show_color_attr(fg, bg, tx);
-	printw("  ACS (%d)", ac != 0);
-
-	refresh();
-    } while (attr_getc(&n, &fg, &bg, &tx, &ac, &k));
-
-    bkgdset(A_NORMAL | BLANK);
-    erase();
-    endwin();
+	endwin();
+    } else {
+	Cannot("does not support video attributes.");
+    }
 }
 
 #if USE_WIDEC_SUPPORT
+static bool use_fullwidth;
 static wchar_t wide_attr_test_string[MAX_ATTRSTRING + 1];
+
+#define FULL_LO 0xff00
+#define FULL_HI 0xff5e
+#define HALF_LO 0x20
+
+#define isFullWidth(ch)   ((int)(ch) >= FULL_LO && (int)(ch) <= FULL_HI)
+#define ToNormalWidth(ch) (wchar_t) (((int)(ch) - FULL_LO) + HALF_LO)
+#define ToFullWidth(ch)   (wchar_t) (((int)(ch) - HALF_LO) + FULL_LO)
+
+/*
+ * Returns an ASCII code in [32..126]
+ */
+static wchar_t
+normal_wchar(int ch)
+{
+    wchar_t result = (wchar_t) ch;
+    if (isFullWidth(ch))
+	result = ToNormalWidth(ch);
+    return result;
+}
+
+/*
+ * Returns either an ASCII code in in [32..126] or full-width in
+ * [0xff00..0xff5e], according to use_fullwidth setting.
+ */
+static wchar_t
+target_wchar(int ch)
+{
+    wchar_t result = (wchar_t) ch;
+    if (use_fullwidth) {
+	if (!isFullWidth(ch))
+	    result = ToFullWidth(ch);
+    } else {
+	if (isFullWidth(ch))
+	    result = ToNormalWidth(ch);
+    }
+    return result;
+}
 
 static void
 wide_adjust_attr_string(int adjust)
 {
-    int first = ((int) UChar(wide_attr_test_string[0])) + adjust;
-    int last = first + LEN_ATTRSTRING;
+    wchar_t save = wide_attr_test_string[0];
+    int first = ((int) normal_wchar(save)) + adjust;
+    int j, k;
 
-    if (first >= ' ' && last <= '~') {	/* 32..126 */
-	int j, k;
-	for (j = 0, k = first; j < MAX_ATTRSTRING && k <= last; ++j, ++k) {
-	    wide_attr_test_string[j] = k;
+    if (first >= ATTRSTRING_1ST) {
+	for (j = 0, k = first; j < MAX_ATTRSTRING; ++j, ++k) {
+	    if (k > ATTRSTRING_END)
+		break;
+	    wide_attr_test_string[j] = target_wchar(k);
 	    if (((k + 1 - first) % 5) == 0) {
 		if (++j >= MAX_ATTRSTRING)
 		    break;
 		wide_attr_test_string[j] = ' ';
 	    }
 	}
-	while (j < MAX_ATTRSTRING)
-	    wide_attr_test_string[j++] = ' ';
-	wide_attr_test_string[j] = '\0';
-    } else {
-	beep();
+	if ((LEN_ATTRSTRING - j) > 5) {
+	    wide_attr_test_string[0] = save;
+	    wide_adjust_attr_string(adjust - 1);
+	} else {
+	    while (j < MAX_ATTRSTRING)
+		wide_attr_test_string[j++] = ' ';
+	    wide_attr_test_string[j] = '\0';
+	}
     }
 }
 
 static void
 wide_init_attr_string(void)
 {
-    wide_attr_test_string[0] = 'a';
+    use_fullwidth = FALSE;
+    wide_attr_test_string[0] = (wchar_t) default_attr_string();
     wide_adjust_attr_string(0);
 }
 
 static void
-set_wide_background(short pair)
+set_wide_background(NCURSES_PAIRS_T pair)
 {
     cchar_t normal;
     wchar_t blank[2];
@@ -1657,7 +1777,7 @@ get_wide_background(void)
     attr_t result = A_NORMAL;
     attr_t attr;
     cchar_t ch;
-    short pair;
+    NCURSES_PAIRS_T pair;
     wchar_t wch[10];
 
     memset(&ch, 0, sizeof(ch));
@@ -1670,7 +1790,13 @@ get_wide_background(void)
 }
 
 static int
-wide_show_attr(int row, int skip, bool arrow, chtype attr, short pair, const char *name)
+wide_show_attr(WINDOW *win,
+	       int row,
+	       int skip,
+	       bool arrow,
+	       chtype attr,
+	       NCURSES_PAIRS_T pair,
+	       const char *name)
 {
     int ncv = get_ncv();
     chtype test = attr & ~WA_ALTCHARSET;
@@ -1678,7 +1804,7 @@ wide_show_attr(int row, int skip, bool arrow, chtype attr, short pair, const cha
     if (arrow)
 	MvPrintw(row, 5, "-->");
     MvPrintw(row, 8, "%s mode:", name);
-    MvPrintw(row, 24, "|");
+    MvPrintw(row, COL_ATTRSTRING - 1, "|");
     if (skip)
 	printw("%*s", skip, " ");
 
@@ -1687,6 +1813,8 @@ wide_show_attr(int row, int skip, bool arrow, chtype attr, short pair, const cha
      * character at a time (to pass its rendition directly), and use the
      * string operation for the other attributes.
      */
+    wmove(win, 0, 0);
+    werase(win);
     if (attr & WA_ALTCHARSET) {
 	const wchar_t *s;
 	cchar_t ch;
@@ -1696,20 +1824,20 @@ wide_show_attr(int row, int skip, bool arrow, chtype attr, short pair, const cha
 	    fill[0] = *s;
 	    fill[1] = L'\0';
 	    setcchar(&ch, fill, attr, pair, 0);
-	    add_wch(&ch);
+	    (void) wadd_wch(win, &ch);
 	}
     } else {
 	attr_t old_attr = 0;
-	short old_pair = 0;
+	NCURSES_PAIRS_T old_pair = 0;
 
-	(void) attr_get(&old_attr, &old_pair, 0);
-	(void) attr_set(attr, pair, 0);
-	addwstr(wide_attr_test_string);
-	(void) attr_set(old_attr, old_pair, 0);
+	(void) (wattr_get) (win, &old_attr, &old_pair, 0);
+	(void) wattr_set(win, attr, pair, 0);
+	(void) waddwstr(win, wide_attr_test_string);
+	(void) wattr_set(win, old_attr, old_pair, 0);
     }
     if (skip)
 	printw("%*s", skip, " ");
-    printw("|");
+    MvPrintw(row, COL_ATTRSTRING + LEN_ATTRSTRING, "|");
     if (test != A_NORMAL) {
 	if (!(term_attrs() & test)) {
 	    printw(" (N/A)");
@@ -1747,7 +1875,10 @@ wide_show_attr(int row, int skip, bool arrow, chtype attr, short pair, const cha
 }
 
 static bool
-wide_attr_getc(int *skip, short *fg, short *bg, short *tx, int *ac, unsigned *kc)
+wide_attr_getc(int *skip,
+	       NCURSES_COLOR_T *fg, NCURSES_COLOR_T *bg,
+	       NCURSES_COLOR_T *tx, int *ac,
+	       unsigned *kc, unsigned limit)
 {
     bool result = TRUE;
     bool error = FALSE;
@@ -1780,14 +1911,22 @@ wide_attr_getc(int *skip, short *fg, short *bg, short *tx, int *ac, unsigned *kc
 		break;
 	    case 'v':
 		if (*kc == 0)
-		    *kc = SIZEOF(attrs_to_test) - 1;
+		    *kc = limit - 1;
 		else
 		    *kc -= 1;
 		break;
 	    case 'V':
 		*kc += 1;
-		if (*kc >= SIZEOF(attrs_to_test))
+		if (*kc >= limit)
 		    *kc = 0;
+		break;
+	    case 'w':
+		use_fullwidth = FALSE;
+		wide_adjust_attr_string(0);
+		break;
+	    case 'W':
+		use_fullwidth = TRUE;
+		wide_adjust_attr_string(0);
 		break;
 	    case '<':
 		wide_adjust_attr_string(-1);
@@ -1813,68 +1952,82 @@ wide_attr_test(void)
 {
     int n;
     int skip = get_xmc();
-    short fg = COLOR_BLACK;	/* color pair 0 is special */
-    short bg = COLOR_BLACK;
-    short tx = -1;
+    NCURSES_COLOR_T fg = COLOR_BLACK;	/* color pair 0 is special */
+    NCURSES_COLOR_T bg = COLOR_BLACK;
+    NCURSES_COLOR_T tx = -1;
     int ac = 0;
     unsigned j, k;
+    ATTR_TBL my_list[SIZEOF(attrs_to_test)];
+    WINDOW *my_wins[SIZEOF(attrs_to_test)];
+    unsigned my_size = init_attr_list(my_list, term_attrs());
 
-    if (skip < 0)
-	skip = 0;
-
-    n = skip;			/* make it easy */
-    k = SIZEOF(attrs_to_test) - 1;
-    wide_init_attr_string();
-
-    do {
-	int row = 2;
-	short pair = 0;
-	short extras = 0;
-
-	if (use_colors) {
-	    pair = (short) (fg != COLOR_BLACK || bg != COLOR_BLACK);
-	    if (pair != 0) {
-		pair = 1;
-		if (init_pair(pair, fg, bg) == ERR) {
-		    beep();
-		}
-	    }
-	    extras = pair;
-	    if (tx >= 0) {
-		extras = 2;
-		if (init_pair(extras, tx, bg) == ERR) {
-		    beep();
-		}
-	    }
+    if (my_size > 1) {
+	for (j = 0; j < my_size; ++j) {
+	    my_wins[j] = subwin(stdscr,
+				1, LEN_ATTRSTRING,
+				2 + (int) (2 * j), COL_ATTRSTRING);
+	    scrollok(my_wins[j], FALSE);
 	}
-	set_wide_background(pair);
+
+	if (skip < 0)
+	    skip = 0;
+
+	n = skip;		/* make it easy */
+	k = my_size - 1;
+	wide_init_attr_string();
+
+	do {
+	    int row = 2;
+	    NCURSES_PAIRS_T pair = 0;
+	    NCURSES_PAIRS_T extras = 0;
+
+	    if (use_colors) {
+		pair = (NCURSES_PAIRS_T) (fg != COLOR_BLACK || bg != COLOR_BLACK);
+		if (pair != 0) {
+		    pair = 1;
+		    if (init_pair(pair, fg, bg) == ERR) {
+			beep();
+		    }
+		}
+		extras = pair;
+		if (tx >= 0) {
+		    extras = 2;
+		    if (init_pair(extras, tx, bg) == ERR) {
+			beep();
+		    }
+		}
+	    }
+	    set_wide_background(pair);
+	    erase();
+
+	    box_set(stdscr, 0, 0);
+	    MvAddStr(0, 20, "Character attribute test display");
+
+	    for (j = 0; j < my_size; ++j) {
+		row = wide_show_attr(my_wins[j], row, n, (j == k),
+				     ((attr_t) ac |
+				      my_list[j].attr |
+				      my_list[k].attr),
+				     extras,
+				     my_list[j].name);
+	    }
+
+	    MvPrintw(row, 8,
+		     "This terminal does %shave the magic-cookie glitch",
+		     get_xmc() > -1 ? "" : "not ");
+	    MvPrintw(row + 1, 8, "Enter '?' for help.");
+	    show_color_attr(fg, bg, tx);
+	    printw("  ACS (%d)", ac != 0);
+
+	    refresh();
+	} while (wide_attr_getc(&n, &fg, &bg, &tx, &ac, &k, my_size));
+
+	set_wide_background(0);
 	erase();
-
-	box_set(stdscr, 0, 0);
-	MvAddStr(0, 20, "Character attribute test display");
-
-	for (j = 0; j < SIZEOF(attrs_to_test); ++j) {
-	    row = wide_show_attr(row, n, j == k,
-				 ((attr_t) ac |
-				  attrs_to_test[j].attr |
-				  attrs_to_test[k].attr),
-				 extras,
-				 attrs_to_test[j].name);
-	}
-
-	MvPrintw(row, 8,
-		 "This terminal does %shave the magic-cookie glitch",
-		 get_xmc() > -1 ? "" : "not ");
-	MvPrintw(row + 1, 8, "Enter '?' for help.");
-	show_color_attr(fg, bg, tx);
-	printw("  ACS (%d)", ac != 0);
-
-	refresh();
-    } while (wide_attr_getc(&n, &fg, &bg, &tx, &ac, &k));
-
-    set_wide_background(0);
-    erase();
-    endwin();
+	endwin();
+    } else {
+	Cannot("does not support extended video attributes.");
+    }
 }
 #endif
 
@@ -1949,6 +2102,10 @@ color_legend(WINDOW *helpwin, bool wide)
 	      "  a/A     toggle altcharset off/on");
     MvWPrintw(helpwin, row++, col,
 	      "  b/B     toggle bold off/on");
+    if (has_colors()) {
+	MvWPrintw(helpwin, row++, col,
+		  "  c/C     cycle used-colors through 8,16,...,COLORS");
+    }
     MvWPrintw(helpwin, row++, col,
 	      "  n/N     toggle text/number on/off");
     MvWPrintw(helpwin, row++, col,
@@ -1969,16 +2126,46 @@ color_legend(WINDOW *helpwin, bool wide)
 
 #define set_color_test(name, value) if (name != value) { name = value; base_row = 0; }
 
+static int
+color_cycle(int current, int step)
+{
+    int result = current;
+    if (step < 0) {
+	if (current <= 8) {
+	    result = COLORS;
+	} else {
+	    result = 8;
+	    if ((result * 2) > COLORS) {
+		result = COLORS;
+	    } else {
+		while ((result * 2) < current) {
+		    result *= 2;
+		}
+	    }
+	}
+    } else {
+	if (current >= COLORS) {
+	    result = 8;
+	} else {
+	    result *= 2;
+	}
+	if (result > COLORS)
+	    result = COLORS;
+    }
+    return result;
+}
+
 /* generate a color test pattern */
 static void
 color_test(void)
 {
-    short i;
+    NCURSES_PAIRS_T i;
     int top = 0, width;
     int base_row = 0;
     int grid_top = top + 3;
     int page_size = (LINES - grid_top);
-    int pairs_max = PAIR_NUMBER(A_COLOR) + 1;
+    int pairs_max;
+    int colors_max = COLORS;
     int row_limit;
     int per_row;
     char numbered[80];
@@ -1991,23 +2178,24 @@ color_test(void)
     bool opt_wide = FALSE;
     WINDOW *helpwin;
 
-    if (COLORS * COLORS == COLOR_PAIRS) {
-	int limit = (COLORS - min_colors) * (COLORS - min_colors);
-	if (pairs_max > limit)
-	    pairs_max = limit;
-    } else {
-	if (pairs_max > COLOR_PAIRS)
-	    pairs_max = COLOR_PAIRS;
-    }
-
     while (!done) {
 	int shown = 0;
+
+	pairs_max = PAIR_NUMBER(A_COLOR) + 1;
+	if (colors_max * colors_max <= COLOR_PAIRS) {
+	    int limit = (colors_max - min_colors) * (colors_max - min_colors);
+	    if (pairs_max > limit)
+		pairs_max = limit;
+	} else {
+	    if (pairs_max > COLOR_PAIRS)
+		pairs_max = COLOR_PAIRS;
+	}
 
 	/* this assumes an 80-column line */
 	if (opt_wide) {
 	    width = 4;
 	    hello = "Test";
-	    per_row = (COLORS > 8) ? 16 : 8;
+	    per_row = (colors_max > 8) ? 16 : 8;
 	} else {
 	    width = 8;
 	    hello = "Hello";
@@ -2018,9 +2206,12 @@ color_test(void)
 	row_limit = (pairs_max + per_row - 1) / per_row;
 
 	move(0, 0);
-	(void) printw("There are %d color pairs and %d colors%s\n",
-		      pairs_max, COLORS,
-		      min_colors ? " besides 'default'" : "");
+	(void) printw("There are %d color pairs and %d colors",
+		      pairs_max, COLORS);
+	if (colors_max != COLORS)
+	    (void) printw(" (using %d colors)", colors_max);
+	if (min_colors)
+	    (void) addstr(" besides 'default'");
 
 	clrtobot();
 	MvPrintw(top + 1, 0,
@@ -2034,28 +2225,28 @@ color_test(void)
 	    show_color_name(top + 2, (i + 1) * width, i + min_colors, opt_wide);
 
 	/* show a grid of colors, with color names/ numbers on the left */
-	for (i = (short) (base_row * per_row); i < pairs_max; i++) {
+	for (i = (NCURSES_PAIRS_T) (base_row * per_row); i < pairs_max; i++) {
 	    int row = grid_top + (i / per_row) - base_row;
 	    int col = (i % per_row + 1) * width;
-	    short pair = i;
+	    NCURSES_PAIRS_T pair = i;
 
-#define InxToFG(i) (short) ((i % (COLORS - min_colors)) + min_colors)
-#define InxToBG(i) (short) ((i / (COLORS - min_colors)) + min_colors)
+#define InxToFG(i) (NCURSES_COLOR_T) ((i % (colors_max - min_colors)) + min_colors)
+#define InxToBG(i) (NCURSES_COLOR_T) ((i / (colors_max - min_colors)) + min_colors)
 	    if (row >= 0 && move(row, col) != ERR) {
-		short fg = InxToFG(i);
-		short bg = InxToBG(i);
+		NCURSES_COLOR_T fg = InxToFG(i);
+		NCURSES_COLOR_T bg = InxToBG(i);
 
 		init_pair(pair, fg, bg);
-		attron((attr_t) COLOR_PAIR(pair));
+		attron(COLOR_PAIR(pair));
 		if (opt_acsc)
-		    attron((attr_t) A_ALTCHARSET);
+		    attron(A_ALTCHARSET);
 		if (opt_bold)
-		    attron((attr_t) A_BOLD);
+		    attron(A_BOLD);
 		if (opt_revs)
-		    attron((attr_t) A_REVERSE);
+		    attron(A_REVERSE);
 
 		if (opt_nums) {
-		    sprintf(numbered, "{%02X}", i);
+		    sprintf(numbered, "{%02X}", (int) i);
 		    hello = numbered;
 		}
 		printw("%-*.*s", width, width, hello);
@@ -2082,6 +2273,12 @@ color_test(void)
 	    break;
 	case 'B':
 	    opt_bold = TRUE;
+	    break;
+	case 'c':
+	    colors_max = color_cycle(colors_max, -1);
+	    break;
+	case 'C':
+	    colors_max = color_cycle(colors_max, 1);
 	    break;
 	case 'n':
 	    opt_nums = FALSE;
@@ -2172,6 +2369,7 @@ wide_color_test(void)
     int grid_top = top + 3;
     int page_size = (LINES - grid_top);
     int pairs_max = (unsigned short) (-1);
+    int colors_max = COLORS;
     int row_limit;
     int per_row;
     char numbered[80];
@@ -2186,23 +2384,24 @@ wide_color_test(void)
     wchar_t buffer[80];
     WINDOW *helpwin;
 
-    if (COLORS * COLORS == COLOR_PAIRS) {
-	int limit = (COLORS - min_colors) * (COLORS - min_colors);
-	if (pairs_max > limit)
-	    pairs_max = limit;
-    } else {
-	if (pairs_max > COLOR_PAIRS)
-	    pairs_max = COLOR_PAIRS;
-    }
-
     while (!done) {
 	int shown = 0;
+
+	pairs_max = (unsigned short) (-1);
+	if (colors_max * colors_max <= COLOR_PAIRS) {
+	    int limit = (colors_max - min_colors) * (colors_max - min_colors);
+	    if (pairs_max > limit)
+		pairs_max = limit;
+	} else {
+	    if (pairs_max > COLOR_PAIRS)
+		pairs_max = COLOR_PAIRS;
+	}
 
 	/* this assumes an 80-column line */
 	if (opt_wide) {
 	    width = 4;
 	    hello = "Test";
-	    per_row = (COLORS > 8) ? 16 : 8;
+	    per_row = (colors_max > 8) ? 16 : 8;
 	} else {
 	    width = 8;
 	    hello = "Hello";
@@ -2221,9 +2420,12 @@ wide_color_test(void)
 	row_limit = (pairs_max + per_row - 1) / per_row;
 
 	move(0, 0);
-	(void) printw("There are %d color pairs and %d colors%s\n",
-		      pairs_max, COLORS,
-		      min_colors ? " besides 'default'" : "");
+	(void) printw("There are %d color pairs and %d colors",
+		      pairs_max, COLORS);
+	if (colors_max != COLORS)
+	    (void) printw(" (using %d colors)", colors_max);
+	if (min_colors)
+	    (void) addstr(" besides 'default'");
 
 	clrtobot();
 	MvPrintw(top + 1, 0,
@@ -2240,17 +2442,17 @@ wide_color_test(void)
 	for (i = (base_row * per_row); i < pairs_max; i++) {
 	    int row = grid_top + (i / per_row) - base_row;
 	    int col = (i % per_row + 1) * width;
-	    short pair = (short) i;
+	    NCURSES_PAIRS_T pair = (NCURSES_PAIRS_T) i;
 
 	    if (row >= 0 && move(row, col) != ERR) {
 		init_pair(pair, InxToFG(i), InxToBG(i));
 		(void) color_set(pair, NULL);
 		if (opt_acsc)
-		    attr_on((attr_t) A_ALTCHARSET, NULL);
+		    attr_on(A_ALTCHARSET, NULL);
 		if (opt_bold)
-		    attr_on((attr_t) A_BOLD, NULL);
+		    attr_on(A_BOLD, NULL);
 		if (opt_revs)
-		    attr_on((attr_t) A_REVERSE, NULL);
+		    attr_on(A_REVERSE, NULL);
 
 		if (opt_nums) {
 		    sprintf(numbered, "{%02X}", i);
@@ -2284,6 +2486,12 @@ wide_color_test(void)
 	    break;
 	case 'B':
 	    opt_bold = TRUE;
+	    break;
+	case 'c':
+	    colors_max = color_cycle(colors_max, -1);
+	    break;
+	case 'C':
+	    colors_max = color_cycle(colors_max, 1);
 	    break;
 	case 'n':
 	    opt_nums = FALSE;
@@ -2371,21 +2579,21 @@ wide_color_test(void)
 #endif /* USE_WIDEC_SUPPORT */
 
 static void
-change_color(short current, int field, int value, int usebase)
+change_color(NCURSES_PAIRS_T current, int field, int value, int usebase)
 {
-    short red, green, blue;
+    NCURSES_COLOR_T red, green, blue;
 
     color_content(current, &red, &green, &blue);
 
     switch (field) {
     case 0:
-	red = (short) (usebase ? (red + value) : value);
+	red = (NCURSES_COLOR_T) (usebase ? (red + value) : value);
 	break;
     case 1:
-	green = (short) (usebase ? (green + value) : value);
+	green = (NCURSES_COLOR_T) (usebase ? (green + value) : value);
 	break;
     case 2:
-	blue = (short) (usebase ? (blue + value) : value);
+	blue = (NCURSES_COLOR_T) (usebase ? (blue + value) : value);
 	break;
     }
 
@@ -2396,7 +2604,7 @@ change_color(short current, int field, int value, int usebase)
 static void
 init_all_colors(void)
 {
-    short c;
+    NCURSES_PAIRS_T c;
 
     for (c = 0; c < COLORS; ++c)
 	init_color(c,
@@ -2422,18 +2630,20 @@ color_edit(void)
     refresh();
 
     for (i = 0; i < max_colors; i++)
-	init_pair((short) i, (short) COLOR_WHITE, (short) i);
+	init_pair((NCURSES_PAIRS_T) i,
+		  (NCURSES_COLOR_T) COLOR_WHITE,
+		  (NCURSES_COLOR_T) i);
 
     MvPrintw(LINES - 2, 0, "Number: %d", value);
 
     do {
-	short red, green, blue;
+	NCURSES_COLOR_T red, green, blue;
 
 	attron(A_BOLD);
 	MvAddStr(0, 20, "Color RGB Value Editing");
 	attroff(A_BOLD);
 
-	for (i = (short) top_color;
+	for (i = (NCURSES_COLOR_T) top_color;
 	     (i - top_color < page_size)
 	     && (i < max_colors); i++) {
 	    char numeric[80];
@@ -2443,34 +2653,34 @@ color_edit(void)
 		     (i == current ? '>' : ' '),
 		     (i < (int) SIZEOF(the_color_names)
 		      ? the_color_names[i] : numeric));
-	    (void) attrset((attr_t) COLOR_PAIR(i));
+	    (void) attrset(AttrArg(COLOR_PAIR(i), 0));
 	    addstr("        ");
 	    (void) attrset(A_NORMAL);
 
-	    color_content((short) i, &red, &green, &blue);
+	    color_content((NCURSES_PAIRS_T) i, &red, &green, &blue);
 	    addstr("   R = ");
 	    if (current == i && field == 0)
 		attron(A_STANDOUT);
-	    printw("%04d", red);
+	    printw("%04d", (int) red);
 	    if (current == i && field == 0)
 		(void) attrset(A_NORMAL);
 	    addstr(", G = ");
 	    if (current == i && field == 1)
 		attron(A_STANDOUT);
-	    printw("%04d", green);
+	    printw("%04d", (int) green);
 	    if (current == i && field == 1)
 		(void) attrset(A_NORMAL);
 	    addstr(", B = ");
 	    if (current == i && field == 2)
 		attron(A_STANDOUT);
-	    printw("%04d", blue);
+	    printw("%04d", (int) blue);
 	    if (current == i && field == 2)
 		(void) attrset(A_NORMAL);
 	    (void) attrset(A_NORMAL);
 	    printw(" ( %3d %3d %3d )",
-		   scaled_rgb(red),
-		   scaled_rgb(green),
-		   scaled_rgb(blue));
+		   (int) scaled_rgb(red),
+		   (int) scaled_rgb(green),
+		   (int) scaled_rgb(blue));
 	}
 
 	MvAddStr(LINES - 3, 0,
@@ -2534,15 +2744,15 @@ color_edit(void)
 	    break;
 
 	case '+':
-	    change_color((short) current, field, value, 1);
+	    change_color((NCURSES_PAIRS_T) current, field, value, 1);
 	    break;
 
 	case '-':
-	    change_color((short) current, field, -value, 1);
+	    change_color((NCURSES_PAIRS_T) current, field, -value, 1);
 	    break;
 
 	case '=':
-	    change_color((short) current, field, value, 0);
+	    change_color((NCURSES_PAIRS_T) current, field, value, 0);
 	    break;
 
 	case '?':
@@ -2569,7 +2779,9 @@ color_edit(void)
 	    endwin();
 	    main_menu(FALSE);
 	    for (i = 0; i < max_colors; i++)
-		init_pair((short) i, (short) COLOR_WHITE, (short) i);
+		init_pair((NCURSES_PAIRS_T) i,
+			  (NCURSES_COLOR_T) COLOR_WHITE,
+			  (NCURSES_COLOR_T) i);
 	    refresh();
 	    break;
 
@@ -2610,32 +2822,19 @@ color_edit(void)
  * Alternate character-set stuff
  *
  ****************************************************************************/
-/* *INDENT-OFF* */
-static struct {
-    chtype attr;
-    const char *name;
-} attrs_to_cycle[] = {
-    { A_NORMAL,		"normal" },
-    { A_BOLD,		"bold" },
-    { A_BLINK,		"blink" },
-    { A_REVERSE,	"reverse" },
-    { A_UNDERLINE,	"underline" },
-};
-/* *INDENT-ON* */
-
 static bool
-cycle_attr(int ch, unsigned *at_code, chtype *attr)
+cycle_attr(int ch, unsigned *at_code, chtype *attr, ATTR_TBL * list, unsigned limit)
 {
     bool result = TRUE;
 
     switch (ch) {
     case 'v':
-	if ((*at_code += 1) >= SIZEOF(attrs_to_cycle))
+	if ((*at_code += 1) >= limit)
 	    *at_code = 0;
 	break;
     case 'V':
 	if (*at_code == 0)
-	    *at_code = SIZEOF(attrs_to_cycle) - 1;
+	    *at_code = limit - 1;
 	else
 	    *at_code -= 1;
 	break;
@@ -2644,12 +2843,12 @@ cycle_attr(int ch, unsigned *at_code, chtype *attr)
 	break;
     }
     if (result)
-	*attr = attrs_to_cycle[*at_code].attr;
+	*attr = list[*at_code].attr;
     return result;
 }
 
 static bool
-cycle_colors(int ch, int *fg, int *bg, short *pair)
+cycle_colors(int ch, int *fg, int *bg, NCURSES_PAIRS_T *pair)
 {
     bool result = FALSE;
 
@@ -2677,10 +2876,12 @@ cycle_colors(int ch, int *fg, int *bg, short *pair)
 	    break;
 	}
 	if (result) {
-	    *pair = (short) (*fg != COLOR_BLACK || *bg != COLOR_BLACK);
+	    *pair = (NCURSES_PAIRS_T) (*fg != COLOR_BLACK || *bg != COLOR_BLACK);
 	    if (*pair != 0) {
 		*pair = 1;
-		if (init_pair(*pair, (short) *fg, (short) *bg) == ERR) {
+		if (init_pair(*pair,
+			      (NCURSES_COLOR_T) *fg,
+			      (NCURSES_COLOR_T) *bg) == ERR) {
 		    result = FALSE;
 		}
 	    }
@@ -2739,7 +2940,7 @@ slk_help(void)
 static void
 call_slk_color(int fg, int bg)
 {
-    init_pair(1, (short) bg, (short) fg);
+    init_pair(1, (NCURSES_COLOR_T) bg, (NCURSES_COLOR_T) fg);
     slk_color(1);
     MvPrintw(SLK_WORK, 0, "Colors %d/%d\n", fg, bg);
     clrtoeol();
@@ -2761,8 +2962,10 @@ slk_test(void)
 #if HAVE_SLK_COLOR
     int fg = COLOR_BLACK;
     int bg = COLOR_WHITE;
-    short pair = 0;
+    NCURSES_PAIRS_T pair = 0;
 #endif
+    ATTR_TBL my_list[SIZEOF(attrs_to_test)];
+    unsigned my_size = init_attr_list(my_list, termattrs());
 
     c = CTRL('l');
 #if HAVE_SLK_COLOR
@@ -2824,7 +3027,7 @@ slk_test(void)
 	    MvAddStr(SLK_WORK, 0, "Please enter the label value: ");
 	    strcpy(buf, "");
 	    if ((s = slk_label(c - '0')) != 0) {
-		strncpy(buf, s, 8);
+		strncpy(buf, s, (size_t) 8);
 	    }
 	    wGetstring(stdscr, buf, 8);
 	    slk_set((c - '0'), buf, fmt);
@@ -2843,7 +3046,7 @@ slk_test(void)
 #endif
 
 	default:
-	    if (cycle_attr(c, &at_code, &attr)) {
+	    if (cycle_attr(c, &at_code, &attr, my_list, my_size)) {
 		slk_attrset(attr);
 		slk_touch();
 		slk_noutrefresh();
@@ -2883,7 +3086,9 @@ wide_slk_test(void)
     unsigned at_code = 0;
     int fg = COLOR_BLACK;
     int bg = COLOR_WHITE;
-    short pair = 0;
+    NCURSES_PAIRS_T pair = 0;
+    ATTR_TBL my_list[SIZEOF(attrs_to_test)];
+    unsigned my_size = init_attr_list(my_list, term_attrs());
 
     c = CTRL('l');
     if (use_colors) {
@@ -2979,13 +3184,13 @@ wide_slk_test(void)
 
 	case 'F':
 	    if (use_colors) {
-		fg = (short) ((fg + 1) % COLORS);
+		fg = (NCURSES_COLOR_T) ((fg + 1) % COLORS);
 		call_slk_color(fg, bg);
 	    }
 	    break;
 	case 'B':
 	    if (use_colors) {
-		bg = (short) ((bg + 1) % COLORS);
+		bg = (NCURSES_COLOR_T) ((bg + 1) % COLORS);
 		call_slk_color(fg, bg);
 	    }
 	    break;
@@ -2995,8 +3200,8 @@ wide_slk_test(void)
 	    break;
 #endif
 	default:
-	    if (cycle_attr(c, &at_code, &attr)) {
-		slk_attr_set(attr, (short) (fg || bg), NULL);
+	    if (cycle_attr(c, &at_code, &attr, my_list, my_size)) {
+		slk_attr_set(attr, (NCURSES_COLOR_T) (fg || bg), NULL);
 		slk_touch();
 		slk_noutrefresh();
 		break;
@@ -3025,7 +3230,7 @@ wide_slk_test(void)
 #endif /* SLK_INIT */
 
 static void
-show_256_chars(int repeat, attr_t attr, short pair)
+show_256_chars(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 {
     unsigned first = 0;
     unsigned last = 255;
@@ -3042,7 +3247,7 @@ show_256_chars(int repeat, attr_t attr, short pair)
     for (code = first; code <= last; ++code) {
 	int row = (int) (2 + (code / 16));
 	int col = (int) (5 * (code % 16));
-	mvaddch(row, col, colored_chtype(code, attr, pair));
+	IGNORE_RC(mvaddch(row, col, colored_chtype(code, attr, pair)));
 	for (count = 1; count < repeat; ++count) {
 	    addch(colored_chtype(code, attr, pair));
 	}
@@ -3058,7 +3263,7 @@ show_256_chars(int repeat, attr_t attr, short pair)
  * terminal to perform functions.  The remaining codes can be graphic.
  */
 static void
-show_upper_chars(int base, int pagesize, int repeat, attr_t attr, short pair)
+show_upper_chars(int base, int pagesize, int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 {
     unsigned code;
     unsigned first = (unsigned) base;
@@ -3100,7 +3305,7 @@ show_upper_chars(int base, int pagesize, int repeat, attr_t attr, short pair)
 #define PC_COLS 4
 
 static void
-show_pc_chars(int repeat, attr_t attr, short pair)
+show_pc_chars(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 {
     unsigned code;
 
@@ -3141,7 +3346,7 @@ show_pc_chars(int repeat, attr_t attr, short pair)
 }
 
 static void
-show_box_chars(int repeat, attr_t attr, short pair)
+show_box_chars(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 {
     (void) repeat;
 
@@ -3188,7 +3393,7 @@ show_1_acs(int n, int repeat, const char *name, chtype code)
 }
 
 static void
-show_acs_chars(int repeat, attr_t attr, short pair)
+show_acs_chars(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 /* display the ACS character set */
 {
     int n;
@@ -3261,8 +3466,10 @@ acs_display(void)
     int fg = COLOR_BLACK;
     int bg = COLOR_BLACK;
     unsigned at_code = 0;
-    short pair = 0;
-    void (*last_show_acs) (int, attr_t, short) = 0;
+    NCURSES_PAIRS_T pair = 0;
+    void (*last_show_acs) (int, attr_t, NCURSES_PAIRS_T) = 0;
+    ATTR_TBL my_list[SIZEOF(attrs_to_test)];
+    unsigned my_size = init_attr_list(my_list, termattrs());
 
     do {
 	switch (c) {
@@ -3320,7 +3527,7 @@ acs_display(void)
 		--repeat;
 	    break;
 	default:
-	    if (cycle_attr(c, &at_code, &attr)
+	    if (cycle_attr(c, &at_code, &attr, my_list, my_size)
 		|| cycle_colors(c, &fg, &bg, &pair)) {
 		break;
 	    } else {
@@ -3344,12 +3551,12 @@ acs_display(void)
 	if (use_colors) {
 	    MvPrintw(LINES - 1, 0,
 		     "v/V, f/F, b/B cycle through video attributes (%s) and color %d/%d.",
-		     attrs_to_cycle[at_code].name,
+		     my_list[at_code].name,
 		     fg, bg);
 	} else {
 	    MvPrintw(LINES - 1, 0,
 		     "v/V cycles through video attributes (%s).",
-		     attrs_to_cycle[at_code].name);
+		     my_list[at_code].name);
 	}
 	refresh();
     } while (!isQuit(c = Getchar()));
@@ -3361,7 +3568,7 @@ acs_display(void)
 
 #if USE_WIDEC_SUPPORT
 static cchar_t *
-merge_wide_attr(cchar_t *dst, const cchar_t *src, attr_t attr, short pair)
+merge_wide_attr(cchar_t *dst, const cchar_t *src, attr_t attr, NCURSES_PAIRS_T pair)
 {
     int count;
 
@@ -3390,7 +3597,7 @@ show_paged_widechars(int base,
 		     int repeat,
 		     int space,
 		     attr_t attr,
-		     short pair)
+		     NCURSES_PAIRS_T pair)
 {
     int first = base * pagesize;
     int last = first + pagesize - 1;
@@ -3404,7 +3611,7 @@ show_paged_widechars(int base,
     MvPrintw(0, 20, "Display of Character Codes %#x to %#x", first, last);
     attroff(A_BOLD);
 
-    for (code = first; (int) code <= last; code++) {
+    for (code = (wchar_t) first; (int) code <= last; code++) {
 	int row = (2 + ((int) code - first) / per_line);
 	int col = 5 * ((int) code % per_line);
 	int count;
@@ -3426,7 +3633,7 @@ show_paged_widechars(int base,
 }
 
 static void
-show_upper_widechars(int first, int repeat, int space, attr_t attr, short pair)
+show_upper_widechars(int first, int repeat, int space, attr_t attr, NCURSES_PAIRS_T pair)
 {
     cchar_t temp;
     wchar_t code;
@@ -3437,7 +3644,7 @@ show_upper_widechars(int first, int repeat, int space, attr_t attr, short pair)
     MvPrintw(0, 20, "Display of Character Codes %d to %d", first, last);
     attroff(A_BOLD);
 
-    for (code = first; (int) code <= last; code++) {
+    for (code = (wchar_t) first; (int) code <= last; code++) {
 	int row = 2 + ((code - first) % 16);
 	int col = ((code - first) / 16) * COLS / 2;
 	wchar_t codes[10];
@@ -3499,7 +3706,7 @@ show_1_wacs(int n, int repeat, const char *name, const cchar_t *code)
 #define MERGE_ATTR(wch) merge_wide_attr(&temp, wch, attr, pair)
 
 static void
-show_wacs_chars(int repeat, attr_t attr, short pair)
+show_wacs_chars(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 /* display the wide-ACS character set */
 {
     cchar_t temp;
@@ -3559,7 +3766,7 @@ show_wacs_chars(int repeat, attr_t attr, short pair)
 
 #ifdef WACS_D_PLUS
 static void
-show_wacs_chars_double(int repeat, attr_t attr, short pair)
+show_wacs_chars_double(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 /* display the wide-ACS character set */
 {
     cchar_t temp;
@@ -3620,7 +3827,7 @@ show_wacs_chars_double(int repeat, attr_t attr, short pair)
 
 #ifdef WACS_T_PLUS
 static void
-show_wacs_chars_thick(int repeat, attr_t attr, short pair)
+show_wacs_chars_thick(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 /* display the wide-ACS character set */
 {
     cchar_t temp;
@@ -3684,7 +3891,7 @@ show_wacs_chars_thick(int repeat, attr_t attr, short pair)
 #define MERGE_ATTR(n,wch) merge_wide_attr(&temp[n], wch, attr, pair)
 
 static void
-show_wbox_chars(int repeat, attr_t attr, short pair)
+show_wbox_chars(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 {
     cchar_t temp[8];
 
@@ -3719,7 +3926,7 @@ show_wbox_chars(int repeat, attr_t attr, short pair)
 #undef MERGE_ATTR
 
 static int
-show_2_wacs(int n, const char *name, const char *code, attr_t attr, short pair)
+show_2_wacs(int n, const char *name, const char *code, attr_t attr, NCURSES_PAIRS_T pair)
 {
     const int height = 16;
     int row = 2 + (n % height);
@@ -3736,7 +3943,7 @@ show_2_wacs(int n, const char *name, const char *code, attr_t attr, short pair)
 #define SHOW_UTF8(n, name, code) show_2_wacs(n, name, code, attr, pair)
 
 static void
-show_utf8_chars(int repeat, attr_t attr, short pair)
+show_utf8_chars(int repeat, attr_t attr, NCURSES_PAIRS_T pair)
 {
     int n;
 
@@ -3801,8 +4008,10 @@ wide_acs_display(void)
     int fg = COLOR_BLACK;
     int bg = COLOR_BLACK;
     unsigned at_code = 0;
-    short pair = 0;
-    void (*last_show_wacs) (int, attr_t, short) = 0;
+    NCURSES_PAIRS_T pair = 0;
+    void (*last_show_wacs) (int, attr_t, NCURSES_PAIRS_T) = 0;
+    ATTR_TBL my_list[SIZEOF(attrs_to_test)];
+    unsigned my_size = init_attr_list(my_list, term_attrs());
 
     do {
 	switch (c) {
@@ -3852,7 +4061,7 @@ wide_acs_display(void)
 	    } else if (c == '_') {
 		space = (space == ' ') ? '_' : ' ';
 		last_show_wacs = 0;
-	    } else if (cycle_attr(c, &at_code, &attr)
+	    } else if (cycle_attr(c, &at_code, &attr, my_list, my_size)
 		       || cycle_colors(c, &fg, &bg, &pair)) {
 		if (last_show_wacs != 0)
 		    break;
@@ -3877,12 +4086,12 @@ wide_acs_display(void)
 	if (use_colors) {
 	    MvPrintw(LINES - 2, 2,
 		     "v/V, f/F, b/B cycle through video attributes (%s) and color %d/%d.",
-		     attrs_to_cycle[at_code].name,
+		     my_list[at_code].name,
 		     fg, bg);
 	} else {
 	    MvPrintw(LINES - 2, 2,
 		     "v/V cycles through video attributes (%s).",
-		     attrs_to_cycle[at_code].name);
+		     my_list[at_code].name);
 	}
 	refresh();
     } while (!isQuit(c = Getchar()));
@@ -4315,7 +4524,7 @@ acs_and_scroll(void)
 	transient((FRAME *) 0, (char *) 0);
 	switch (c) {
 	case CTRL('C'):
-	    if ((neww = typeCalloc(FRAME, 1)) == 0) {
+	    if ((neww = typeCalloc(FRAME, (size_t) 1)) == 0) {
 		failed("acs_and_scroll");
 		goto breakout;
 	    }
@@ -4397,7 +4606,7 @@ acs_and_scroll(void)
 	    if ((fp = fopen(DUMPFILE, "r")) == (FILE *) 0) {
 		transient(current, "Can't open screen dump file");
 	    } else {
-		if ((neww = typeCalloc(FRAME, 1)) != 0) {
+		if ((neww = typeCalloc(FRAME, (size_t) 1)) != 0) {
 
 		    neww->next = current ? current->next : 0;
 		    neww->last = current;
@@ -4599,7 +4808,7 @@ saywhat(NCURSES_CONST char *text)
 	mkpanel(rows,cols,tly,tlx) - alloc a win and panel and associate them
 --------------------------------------------------------------------------*/
 static PANEL *
-mkpanel(short color, int rows, int cols, int tly, int tlx)
+mkpanel(NCURSES_COLOR_T color, int rows, int cols, int tly, int tlx)
 {
     WINDOW *win;
     PANEL *pan = 0;
@@ -4608,8 +4817,10 @@ mkpanel(short color, int rows, int cols, int tly, int tlx)
 	if ((pan = new_panel(win)) == 0) {
 	    delwin(win);
 	} else if (use_colors) {
-	    short fg = (short) ((color == COLOR_BLUE) ? COLOR_WHITE : COLOR_BLACK);
-	    short bg = color;
+	    NCURSES_COLOR_T fg = (NCURSES_COLOR_T) ((color == COLOR_BLUE)
+						    ? COLOR_WHITE
+						    : COLOR_BLACK);
+	    NCURSES_COLOR_T bg = color;
 
 	    init_pair(color, fg, bg);
 	    wbkgdset(win, (attr_t) (COLOR_PAIR(color) | ' '));
@@ -4645,13 +4856,13 @@ pflush(void)
 	fill_panel(win)
 --------------------------------------------------------------------------*/
 static void
-init_panel(void)
+init_panel(WINDOW *win)
 {
     register int y, x;
 
     for (y = 0; y < LINES - 1; y++) {
 	for (x = 0; x < COLS; x++)
-	    wprintw(stdscr, "%d", (y + x) % 10);
+	    wprintw(win, "%d", (y + x) % 10);
     }
 }
 
@@ -4677,7 +4888,7 @@ fill_panel(PANEL * pan)
 
 #if USE_WIDEC_SUPPORT
 static void
-init_wide_panel(void)
+init_wide_panel(WINDOW *win)
 {
     int digit;
     cchar_t temp[10];
@@ -4689,7 +4900,7 @@ init_wide_panel(void)
 	int y, x;
 	getyx(stdscr, y, x);
 	digit = (y + x / 2) % 10;
-    } while (add_wch(&temp[digit]) != ERR);
+    } while (wadd_wch(win, &temp[digit]) != ERR);
 }
 
 static void
@@ -4743,7 +4954,7 @@ canned_panel(PANEL * px[MAX_PANELS + 1], NCURSES_CONST char *cmd)
 }
 
 static void
-demo_panels(void (*InitPanel) (void), void (*FillPanel) (PANEL *))
+demo_panels(void (*InitPanel) (WINDOW *), void (*FillPanel) (PANEL *))
 {
     int count;
     int itmp;
@@ -4752,7 +4963,7 @@ demo_panels(void (*InitPanel) (void), void (*FillPanel) (PANEL *))
     scrollok(stdscr, FALSE);	/* we don't want stdscr to scroll! */
     refresh();
 
-    InitPanel();
+    InitPanel(stdscr);
     for (count = 0; count < 5; count++) {
 	px[1] = mkpanel(COLOR_RED,
 			LINES / 2 - 2,
@@ -5789,13 +6000,13 @@ edit_secure(FIELD * me, int c)
 	size_t have = (source ? strlen(source) : 0) + 1;
 	size_t need = 80 + have;
 	char *temp = malloc(need);
-	long len;
+	size_t len;
 
 	if (temp != 0) {
 	    strncpy(temp, source ? source : "", have + 1);
-	    len = (long) (char *) field_userptr(me);
+	    len = (size_t) (char *) field_userptr(me);
 	    if (c <= KEY_MAX) {
-		if (isgraph(c) && (len + 1) < (int) sizeof(temp)) {
+		if (isgraph(c) && (len + 1) < sizeof(temp)) {
 		    temp[len++] = (char) c;
 		    temp[len] = 0;
 		    set_field_buffer(me, 1, temp);
@@ -6187,7 +6398,7 @@ overlap_helpitem(int state, int item, char *message)
 static void
 overlap_test_1_attr(WINDOW *win, int flavor, int col)
 {
-    short cpair = (short) (1 + (flavor * 2) + col);
+    NCURSES_PAIRS_T cpair = (NCURSES_PAIRS_T) (1 + (flavor * 2) + col);
 
     switch (flavor) {
     case 0:
@@ -6198,11 +6409,11 @@ overlap_test_1_attr(WINDOW *win, int flavor, int col)
 	break;
     case 2:
 	init_pair(cpair, COLOR_BLUE, COLOR_WHITE);
-	(void) wattrset(win, (int) (COLOR_PAIR(cpair) | A_NORMAL));
+	(void) wattrset(win, AttrArg(COLOR_PAIR(cpair), A_NORMAL));
 	break;
     case 3:
 	init_pair(cpair, COLOR_WHITE, COLOR_BLUE);
-	(void) wattrset(win, (int) (COLOR_PAIR(cpair) | A_BOLD));
+	(void) wattrset(win, AttrArg(COLOR_PAIR(cpair), A_BOLD));
 	break;
     }
 }
@@ -6210,7 +6421,7 @@ overlap_test_1_attr(WINDOW *win, int flavor, int col)
 static void
 overlap_test_2_attr(WINDOW *win, int flavor, int col)
 {
-    short cpair = (short) (9 + (flavor * 2) + col);
+    NCURSES_PAIRS_T cpair = (NCURSES_PAIRS_T) (9 + (flavor * 2) + col);
 
     switch (flavor) {
     case 0:
@@ -6625,7 +6836,9 @@ usage(void)
 	,"  -a f,b   set default-colors (assumed white-on-black)"
 	,"  -d       use default-colors if terminal supports them"
 #endif
+#if HAVE_USE_ENV
 	,"  -E       call use_env(FALSE) to ignore $LINES and $COLUMNS"
+#endif
 #if USE_SOFTKEYS
 	,"  -e fmt   specify format for soft-keys test (e)"
 #endif
@@ -6638,7 +6851,7 @@ usage(void)
 #if USE_LIBPANEL
 	,"  -s msec  specify nominal time for panel-demo (default: 1, to hold)"
 #endif
-#if defined(NCURSES_VERSION_PATCH) && (NCURSES_VERSION_PATCH >= 20120714)
+#if defined(NCURSES_VERSION_PATCH) && (NCURSES_VERSION_PATCH >= 20120714) && !defined(__MINGW32__)
 	,"  -T       call use_tioctl(TRUE) to allow SIGWINCH to override environment"
 #endif
 #ifdef TRACE
@@ -6759,7 +6972,7 @@ main_menu(bool top)
 	command = 0;
 	for (;;) {
 	    char ch = '\0';
-	    if (read(fileno(stdin), &ch, 1) <= 0) {
+	    if (read(fileno(stdin), &ch, (size_t) 1) <= 0) {
 		if (command == 0)
 		    command = 'q';
 		break;
@@ -6845,9 +7058,11 @@ main(int argc, char *argv[])
 	    default_colors = TRUE;
 	    break;
 #endif
+#if HAVE_USE_ENV
 	case 'E':
 	    use_env(FALSE);
 	    break;
+#endif
 	case 'e':
 	    my_e_param = atoi(optarg);
 #ifdef NCURSES_VERSION
@@ -6877,7 +7092,7 @@ main(int argc, char *argv[])
 	    nap_msec = (int) atol(optarg);
 	    break;
 #endif
-#if defined(NCURSES_VERSION_PATCH) && (NCURSES_VERSION_PATCH >= 20120714)
+#if defined(NCURSES_VERSION_PATCH) && (NCURSES_VERSION_PATCH >= 20120714) && !defined(__MINGW32__)
 	case 'T':
 	    use_tioctl(TRUE);
 	    break;
@@ -6944,7 +7159,7 @@ main(int argc, char *argv[])
 	max_pairs = COLOR_PAIRS;	/* was > 256 ? 256 : COLOR_PAIRS */
 
 	if (can_change_color()) {
-	    short cp;
+	    NCURSES_PAIRS_T cp;
 	    all_colors = typeMalloc(RGB_DATA, (unsigned) max_colors);
 	    if (!all_colors)
 		failed("all_colors");
@@ -6972,9 +7187,10 @@ main(int argc, char *argv[])
 				   && okRGB(red)
 				   && okRGB(green)
 				   && okRGB(blue)) {
-			    all_colors[c].red = (short) ((red * 1000) / scale);
-			    all_colors[c].green = (short) ((green * 1000) / scale);
-			    all_colors[c].blue = (short) ((blue * 1000) / scale);
+#define Scaled(n) (NCURSES_COLOR_T) (((n) * 1000) / scale)
+			    all_colors[c].red = Scaled(red);
+			    all_colors[c].green = Scaled(green);
+			    all_colors[c].blue = Scaled(blue);
 			}
 		    }
 		    fclose(fp);

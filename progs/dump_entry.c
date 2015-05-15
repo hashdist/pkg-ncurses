@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -39,7 +39,7 @@
 #include "termsort.c"		/* this C file is generated */
 #include <parametrized.h>	/* so is this */
 
-MODULE_ID("$Id: dump_entry.c,v 1.109 2013/05/04 18:48:56 tom Exp $")
+MODULE_ID("$Id: dump_entry.c,v 1.114 2014/10/18 09:32:54 tom Exp $")
 
 #define INDENT			8
 #define DISCARD(string) string = ABSENT_STRING
@@ -467,10 +467,10 @@ indent_DYN(DYNBUF * buffer, int level)
     int n;
 
     for (n = 0; n < level; n++)
-	strncpy_DYN(buffer, "\t", 1);
+	strncpy_DYN(buffer, "\t", (size_t) 1);
 }
 
-static bool
+bool
 has_params(const char *src)
 {
     bool result = FALSE;
@@ -480,9 +480,9 @@ has_params(const char *src)
     bool params = FALSE;
 
     for (n = 0; n < len - 1; ++n) {
-	if (!strncmp(src + n, "%p", 2)) {
+	if (!strncmp(src + n, "%p", (size_t) 2)) {
 	    params = TRUE;
-	} else if (!strncmp(src + n, "%;", 2)) {
+	} else if (!strncmp(src + n, "%;", (size_t) 2)) {
 	    ifthen = TRUE;
 	    result = params;
 	    break;
@@ -504,7 +504,7 @@ fmt_complex(TERMTYPE *tterm, const char *capability, char *src, int level)
 	switch (*src) {
 	case '\\':
 	    percent = FALSE;
-	    strncpy_DYN(&tmpbuf, src++, 1);
+	    strncpy_DYN(&tmpbuf, src++, (size_t) 1);
 	    break;
 	case '%':
 	    percent = TRUE;
@@ -518,22 +518,22 @@ fmt_complex(TERMTYPE *tterm, const char *capability, char *src, int level)
 		/* treat a "%e" as else-if, on the same level */
 		if (*src == 'e') {
 		    indent_DYN(&tmpbuf, level);
-		    strncpy_DYN(&tmpbuf, "%", 1);
-		    strncpy_DYN(&tmpbuf, src, 1);
+		    strncpy_DYN(&tmpbuf, "%", (size_t) 1);
+		    strncpy_DYN(&tmpbuf, src, (size_t) 1);
 		    src++;
 		    params = has_params(src);
 		    if (!params && *src != '\0' && *src != '%') {
-			strncpy_DYN(&tmpbuf, "\n", 1);
+			strncpy_DYN(&tmpbuf, "\n", (size_t) 1);
 			indent_DYN(&tmpbuf, level + 1);
 		    }
 		} else {
 		    indent_DYN(&tmpbuf, level + 1);
-		    strncpy_DYN(&tmpbuf, "%", 1);
-		    strncpy_DYN(&tmpbuf, src, 1);
+		    strncpy_DYN(&tmpbuf, "%", (size_t) 1);
+		    strncpy_DYN(&tmpbuf, src, (size_t) 1);
 		    if (*src++ == '?') {
 			src = fmt_complex(tterm, capability, src, level + 1);
 			if (*src != '\0' && *src != '%') {
-			    strncpy_DYN(&tmpbuf, "\n", 1);
+			    strncpy_DYN(&tmpbuf, "\n", (size_t) 1);
 			    indent_DYN(&tmpbuf, level + 1);
 			}
 		    } else if (level == 1) {
@@ -551,8 +551,8 @@ fmt_complex(TERMTYPE *tterm, const char *capability, char *src, int level)
 		if (level > 1) {
 		    tmpbuf.text[tmpbuf.used - 1] = '\n';
 		    indent_DYN(&tmpbuf, level);
-		    strncpy_DYN(&tmpbuf, "%", 1);
-		    strncpy_DYN(&tmpbuf, src++, 1);
+		    strncpy_DYN(&tmpbuf, "%", (size_t) 1);
+		    strncpy_DYN(&tmpbuf, src++, (size_t) 1);
 		    if (src[0] == '%'
 			&& src[1] != '\0'
 			&& (strchr("?e;", src[1])) == 0) {
@@ -570,20 +570,20 @@ fmt_complex(TERMTYPE *tterm, const char *capability, char *src, int level)
 	    if (percent && params) {
 		tmpbuf.text[tmpbuf.used - 1] = '\n';
 		indent_DYN(&tmpbuf, level + 1);
-		strncpy_DYN(&tmpbuf, "%", 1);
+		strncpy_DYN(&tmpbuf, "%", (size_t) 1);
 	    }
 	    params = FALSE;
 	    percent = FALSE;
 	    break;
 	case ' ':
-	    strncpy_DYN(&tmpbuf, "\\s", 2);
+	    strncpy_DYN(&tmpbuf, "\\s", (size_t) 2);
 	    ++src;
 	    continue;
 	default:
 	    percent = FALSE;
 	    break;
 	}
-	strncpy_DYN(&tmpbuf, src++, 1);
+	strncpy_DYN(&tmpbuf, src++, (size_t) 1);
     }
     return src;
 }
@@ -594,9 +594,9 @@ fmt_complex(TERMTYPE *tterm, const char *capability, char *src, int level)
 int
 fmt_entry(TERMTYPE *tterm,
 	  PredFunc pred,
-	  bool content_only,
-	  bool suppress_untranslatable,
-	  bool infodump,
+	  int content_only,
+	  int suppress_untranslatable,
+	  int infodump,
 	  int numbers)
 {
     PredIdx i, j;
@@ -791,10 +791,13 @@ fmt_entry(TERMTYPE *tterm,
 			    "%s@", name);
 		WRAP_CONCAT;
 	    } else if (outform == F_TERMCAP || outform == F_TCONVERR) {
-		int params = ((i < (int) SIZEOF(parametrized))
-			      ? parametrized[i]
-			      : 0);
 		char *srccap = _nc_tic_expand(capability, TRUE, numbers);
+		int params = (((i < (int) SIZEOF(parametrized)) &&
+			       (i < STRCOUNT))
+			      ? parametrized[i]
+			      : ((*srccap == 'k')
+				 ? 0
+				 : has_params(srccap)));
 		char *cv = _nc_infotocap(name, srccap, params);
 
 		if (cv == 0) {
@@ -876,7 +879,7 @@ fmt_entry(TERMTYPE *tterm,
 
 	    tp = boxchars;
 	    for (cp = acstrans; *cp; cp++) {
-		sp = strchr(acs_chars, *cp);
+		sp = (strchr) (acs_chars, *cp);
 		if (sp)
 		    *tp++ = sp[1];
 		else {
@@ -1104,8 +1107,8 @@ purged_acs(TERMTYPE *tterm)
  */
 void
 dump_entry(TERMTYPE *tterm,
-	   bool suppress_untranslatable,
-	   bool limited,
+	   int suppress_untranslatable,
+	   int limited,
 	   int numbers,
 	   PredFunc pred)
 {

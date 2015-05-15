@@ -1,6 +1,6 @@
 '\" t
 .\"***************************************************************************
-.\" Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+.\" Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
 .\"                                                                          *
 .\" Permission is hereby granted, free of charge, to any person obtaining a  *
 .\" copy of this software and associated documentation files (the            *
@@ -27,9 +27,13 @@
 .\" authorization.                                                           *
 .\"***************************************************************************
 .\"
-.\" $Id: ncurses.3x,v 1.111 2013/03/02 22:15:25 tom Exp $
+.\" $Id: ncurses.3x,v 1.119 2014/08/09 20:54:30 tom Exp $
 .hy 0
 .TH ncurses 3X ""
+.ie \n(.g .ds `` \(lq
+.el       .ds `` ``
+.ie \n(.g .ds '' \(rq
+.el       .ds '' ''
 .de bP
 .IP \(bu 4
 ..
@@ -43,7 +47,7 @@
 .SH DESCRIPTION
 The \fBncurses\fR library routines give the user a terminal-independent method
 of updating character screens with reasonable optimization.
-This implementation is ``new curses'' (ncurses) and
+This implementation is \*(``new curses\*('' (ncurses) and
 is the approved replacement for
 4.4BSD classic curses, which has been discontinued.
 This describes \fBncurses\fR
@@ -756,14 +760,6 @@ The following environment symbols are useful for customizing the
 runtime behavior of the \fBncurses\fR library.
 The most important ones have been already discussed in detail.
 .TP 5
-BAUDRATE
-The debugging library checks this environment variable when the application
-has redirected output to a file.
-The variable's numeric value is used for the baudrate.
-If no value is found, \fBncurses\fR uses 9600.
-This allows testers to construct repeatable test-cases
-that take into account costs that depend on baudrate.
-.TP 5
 CC
 When set, change occurrences of the command_character
 (i.e., the \fBcmdch\fP capability)
@@ -773,6 +769,14 @@ Very few terminfo entries provide this feature.
 Because this name is also used in development environments to represent
 the C compiler's name, \fBncurses\fR ignores it if it does not happen to
 be a single character.
+.TP 5
+BAUDRATE
+The debugging library checks this environment variable when the application
+has redirected output to a file.
+The variable's numeric value is used for the baudrate.
+If no value is found, \fBncurses\fR uses 9600.
+This allows testers to construct repeatable test-cases
+that take into account costs that depend on baudrate.
 .TP 5
 COLUMNS
 Specify the width of the screen in characters.
@@ -864,6 +868,17 @@ about the colors, set this to "\-1,\-1".
 To make it green-on-black, set it to "2,0".
 Any positive value from zero to the terminfo \fBmax_colors\fR value is allowed.
 .TP 5
+NCURSES_CONSOLE2
+This applies only to the MinGW port of ncurses.
+.IP
+The \fBConsole2\fP program's handling of the Microsoft Console API call
+\fBCreateConsoleScreenBuffer\fP is defective.
+Applications which use this will hang.
+However, it is possible to simulate the action of this call by
+mapping coordinates,
+explicitly saving and restoring the original screen contents.
+Setting the environment variable \fBNCGDB\fP has the same effect.
+.TP 5
 NCURSES_GPM_TERMS
 This applies only to ncurses configured to use the GPM interface.
 .IP
@@ -883,7 +898,7 @@ your terminal driver may not handle these properly.
 Set this environment variable to disable the feature.
 You can also adjust your \fBstty\fP settings to avoid the problem.
 .TP 5
-NCURSES_NO_MAGIC_COOKIES
+NCURSES_NO_MAGIC_COOKIE
 Some terminals use a magic-cookie feature which requires special handling
 to make highlighting and other video attributes display properly.
 You can suppress the highlighting entirely for these terminals by
@@ -1006,6 +1021,21 @@ file \fBtrace\fR to the current directory.
 TERM
 Denotes your terminal type.
 Each terminal type is distinct, though many are similar.
+.IP
+\fBTERM\fP is commonly set by terminal emulators to help
+applications find a workable terminal description.
+Some of those choose a popular approximation, e.g.,
+\*(``ansi\*('', \*(``vt100\*('', \*(``xterm\*('' rather than an exact fit.
+Not infrequently, your application will have problems with that approach,
+e.g., incorrect function-key definitions.
+.IP
+If you set \fBTERM\fP in your environment,
+it has no effect on the operation of the terminal emulator.
+It only affects the way applications work within the terminal.
+Likewise, as a general rule (\fBxterm\fP being a rare exception),
+terminal emulators which allow you to
+specify \fBTERM\fP as a parameter or configuration value do
+not change their behavior to match that setting.
 .TP 5
 TERMCAP
 If the \fBncurses\fR library has been configured with \fItermcap\fR
@@ -1126,6 +1156,16 @@ If the headers are installed allowing overwrite,
 the wide-character library's headers should be installed last,
 to allow applications to be built using either library
 from the same set of headers.
+.TP 5
+\-\-with\-pthread
+The configure script renames the library.
+All of the library names have a "t" appended to them
+(before any "w" added by \fB\-\-enable\-widec\fP).
+.IP
+The global variables such as \fBLINES\fP are replaced by macros to
+allow read-only access.
+At the same time, setter-functions are provided to set these values.
+Some applications (very few) may require changes to work with this convention.
 .TP 5
 \-\-with\-shared
 .TP

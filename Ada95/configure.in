@@ -1,5 +1,5 @@
 dnl***************************************************************************
-dnl Copyright (c) 2010-2012,2013 Free Software Foundation, Inc.              *
+dnl Copyright (c) 2010-2013,2014 Free Software Foundation, Inc.              *
 dnl                                                                          *
 dnl Permission is hereby granted, free of charge, to any person obtaining a  *
 dnl copy of this software and associated documentation files (the            *
@@ -28,14 +28,14 @@ dnl***************************************************************************
 dnl
 dnl Author: Thomas E. Dickey
 dnl
-dnl $Id: configure.in,v 1.47 2013/04/27 19:50:17 tom Exp $
+dnl $Id: configure.in,v 1.56 2014/08/02 20:29:22 tom Exp $
 dnl Process this file with autoconf to produce a configure script.
 dnl
 dnl See http://invisible-island.net/autoconf/ for additional information.
 dnl
 dnl ---------------------------------------------------------------------------
 AC_PREREQ(2.52.20030208)
-AC_REVISION($Revision: 1.47 $)
+AC_REVISION($Revision: 1.56 $)
 AC_INIT(gen/gen.c)
 AC_CONFIG_HEADER(include/ncurses_cfg.h:include/ncurses_cfg.hin)
 
@@ -67,7 +67,6 @@ AC_SYS_LONG_FILE_NAMES
 # if we find pkg-config, check if we should install the ".pc" files.
 CF_PKG_CONFIG
 CF_WITH_PKG_CONFIG_LIBDIR
-CF_ENABLE_PC_FILES
 
 AC_MSG_CHECKING(if you want to build test-programs)
 AC_ARG_WITH(tests,
@@ -373,7 +372,7 @@ AC_MSG_RESULT($with_warnings)
 
 if test "x$with_warnings" = "xyes"; then
  	CF_ADD_ADAFLAGS(-gnatg)
-	CF_GCC_WARNINGS(Wdeclaration-after-statement Wextra Wno-unknown-pragmas Wswitch-enum)
+	CF_GCC_WARNINGS(Wno-unknown-pragmas Wswitch-enum)
 fi
 CF_GCC_ATTRIBUTES
 
@@ -432,6 +431,8 @@ fi
 
 AC_SUBST(ADA_TRACE)
 
+CF_DISABLE_GNAT_PROJECTS
+
 ###	Checks for libraries.
 case $cf_cv_system_name in #(vi
 *mingw32*) #(vi
@@ -476,9 +477,10 @@ if test "$cf_with_ada" != "no" ; then
 	if test	"$cf_cv_prog_gnat_correct" = yes; then
 		CF_FIXUP_ADAFLAGS
 
+		CF_GNATPREP_OPT_T
+
 		CF_GNAT_GENERICS
 		CF_GNAT_SIGINT
-		CF_GNAT_PRAGMA_UNREF
 		CF_GNAT_PROJECTS
 
 		CF_WITH_ADA_COMPILER
@@ -531,6 +533,9 @@ if test "$DFT_LWR_MODEL" = shared ; then
 	cygwin*)
 		# "lib" files have ".dll.a" suffix, "cyg" files have ".dll"
 		;;
+	msys*)
+		# "lib" files have ".dll.a" suffix, "msys-" files have ".dll"
+		;;
 	esac
 fi
 
@@ -543,17 +548,6 @@ AC_DEFINE_UNQUOTED(NCURSES_PATHSEP,'$PATH_SEPARATOR',[Define to override ':' as 
 
 ### Now that we're done running tests, add the compiler-warnings, if any
 CF_ADD_CFLAGS($EXTRA_CFLAGS)
-
-################################################################################
-
-if test x"$enable_pc_files" = xyes ; then \
-SUB_MAKEFILES="$SUB_MAKEFILES misc/gen-pkgconfig:misc/gen-pkgconfig.in"
-MAKE_PC_FILES=
-else
-MAKE_PC_FILES="#"
-fi
-AC_SUBST(MAKE_PC_FILES)
-AC_SUBST(cross_compiling)
 
 ################################################################################
 

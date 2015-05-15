@@ -1,5 +1,5 @@
 /****************************************************************************
- * Copyright (c) 1998-2012,2013 Free Software Foundation, Inc.              *
+ * Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.              *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -29,7 +29,7 @@
 /****************************************************************************
  *  Author: Thomas E. Dickey                    1996-on                     *
  ****************************************************************************/
-/* $Id: test.priv.h,v 1.117 2013/02/10 01:00:04 tom Exp $ */
+/* $Id: test.priv.h,v 1.131 2014/10/25 01:20:34 tom Exp $ */
 
 #ifndef __TEST_PRIV_H
 #define __TEST_PRIV_H 1
@@ -162,6 +162,10 @@
 #define HAVE_RIPOFFLINE 0
 #endif
 
+#ifndef HAVE_SCR_DUMP
+#define HAVE_SCR_DUMP 0
+#endif
+
 #ifndef HAVE_SETUPTERM
 #define HAVE_SETUPTERM 0
 #endif
@@ -194,6 +198,10 @@
 #define HAVE_TERMNAME 0
 #endif
 
+#ifndef HAVE_TERM_ENTRY_H
+#define HAVE_TERM_ENTRY_H 0
+#endif
+
 #ifndef HAVE_TGETENT
 #define HAVE_TGETENT 0
 #endif
@@ -218,12 +226,28 @@
 #define HAVE_USE_DEFAULT_COLORS 0
 #endif
 
+#ifndef HAVE_USE_ENV
+#define HAVE_USE_ENV 0
+#endif
+
+#ifndef HAVE_USE_EXTENDED_NAMES
+#define HAVE_USE_EXTENDED_NAMES 0
+#endif
+
 #ifndef HAVE_USE_SCREEN
 #define HAVE_USE_SCREEN 0
 #endif
 
 #ifndef HAVE_USE_WINDOW
 #define HAVE_USE_WINDOW 0
+#endif
+
+#ifndef HAVE_VIDPUTS
+#define HAVE_VIDPUTS 0
+#endif
+
+#ifndef HAVE_VID_PUTS
+#define HAVE_VID_PUTS 0
 #endif
 
 #ifndef HAVE_WRESIZE
@@ -416,6 +440,14 @@ extern int optind;
 #define NCURSES_CH_T cchar_t
 #endif
 
+#ifndef NCURSES_COLOR_T
+#define NCURSES_COLOR_T short
+#endif
+
+#ifndef NCURSES_PAIRS_T
+#define NCURSES_PAIRS_T short
+#endif
+
 #ifndef NCURSES_OPAQUE
 #define NCURSES_OPAQUE 0
 #endif
@@ -538,7 +570,7 @@ extern char *strnames[], *strcodes[], *strfnames[];
 	if ((count = getcchar(s, NULL, NULL, NULL, NULL)) > 0) { \
 	    wchar_t test_wch[CCHARW_MAX + 2]; \
 	    attr_t test_attrs; \
-	    short test_pair; \
+	    NCURSES_PAIRS_T test_pair; \
 	    \
 	    if (getcchar( s, test_wch, &test_attrs, &test_pair, NULL) == OK \
 		&& test_wch[0] != L'\0') { \
@@ -607,6 +639,17 @@ extern char *strnames[], *strcodes[], *strfnames[];
 #define TIGETSTR(ti,tc) tgetstr(tc,&area_pointer)
 #endif
 
+/*
+ * So far (2013 - more than ten years), only ncurses implements
+ * use_extended_names().
+ */
+#if defined(NCURSES_XNAMES)
+#elif defined(NCURSES_VERSION) && defined(HAVE_TERM_ENTRY_H) && HAVE_TERM_ENTRY_H
+#define NCURSES_XNAMES 1
+#else
+#define NCURSES_XNAMES 0
+#endif
+
 /* ncurses implements tparm() with varargs, X/Open with a fixed-parameter list
  * (which is incompatible with legacy usage, doesn't solve any problems).
  */
@@ -624,9 +667,9 @@ extern char *strnames[], *strcodes[], *strfnames[];
 #define ExitProgram(code) _nc_free_tinfo(code)
 #endif
 #else
-#define typeMalloc(type,n) (type *) malloc((n) * sizeof(type))
-#define typeCalloc(type,elts) (type *) calloc((elts), sizeof(type))
-#define typeRealloc(type,n,p) (type *) realloc(p, (n) * sizeof(type))
+#define typeMalloc(type,n) (type *) malloc((size_t)(n) * sizeof(type))
+#define typeCalloc(type,elts) (type *) calloc((size_t)(elts), sizeof(type))
+#define typeRealloc(type,n,p) (type *) realloc(p, (size_t)(n) * sizeof(type))
 #endif
 
 #ifndef ExitProgram
@@ -640,24 +683,28 @@ extern char *strnames[], *strcodes[], *strfnames[];
 #define EXIT_FAILURE 1
 #endif
 
-#if defined(__MINGW32__)
+#if defined(__MINGW32__) || defined(USE_WIN32CON_DRIVER)
 
 #if defined(PDCURSES)
 #ifdef WINVER
 #  if WINVER < 0x0501
 #    error WINVER must at least be 0x0501
-#  endif  
+#  endif
 #else
 #  define WINVER 0x0501
 #endif
 #include <windows.h>
-#include <sys/time.h>	/* for struct timeval */
+#include <sys/time.h>		/* for struct timeval */
 #undef sleep
 #define sleep(n) Sleep((n) * 1000)
 #define SIGHUP  1
 #define SIGKILL 9
 #define getlogin() "username"
 
+#elif defined(HAVE_NCURSESW_NCURSES_H)
+#include <ncursesw/nc_mingw.h>
+#elif defined(HAVE_NCURSES_NCURSES_H)
+#include <ncurses/nc_mingw.h>
 #else
 #include <nc_mingw.h>
 #endif
@@ -803,6 +850,15 @@ extern char *tgoto(char *, int, int);	/* available, but not prototyped */
 #define MvWHLine        (void) mvwhline
 #define MvVLine         (void) mvvline
 #define MvWVLine        (void) mvwvline
+
+/*
+ * The macro likely uses unsigned values, while X/Open prototype uses int.
+ */
+#if defined(wattrset) || defined(PDCURSES)
+#define AttrArg(p,a)    (attr_t) ((attr_t)(p) | (attr_t)(a))
+#else
+#define AttrArg(p,a)    (int) ((attr_t)(p) | (attr_t)(a))
+#endif
 
 /*
  * Workaround for defective implementation of gcc attribute warn_unused_result

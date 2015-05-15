@@ -1,6 +1,6 @@
-# $Id: ncurses_defs,v 1.59 2013/04/27 19:46:53 tom Exp $
+# $Id: ncurses_defs,v 1.66 2014/09/05 08:46:16 tom Exp $
 ##############################################################################
-# Copyright (c) 2000-2012,2013 Free Software Foundation, Inc.                #
+# Copyright (c) 2000-2013,2014 Free Software Foundation, Inc.                #
 #                                                                            #
 # Permission is hereby granted, free of charge, to any person obtaining a    #
 # copy of this software and associated documentation files (the "Software"), #
@@ -70,6 +70,7 @@ HAVE_GPM_H
 HAVE_GPP_BUILTIN_H
 HAVE_GXX_BUILTIN_H
 HAVE_HAS_KEY
+HAVE_INTTYPES_H
 HAVE_IOSTREAM
 HAVE_ISASCII
 HAVE_ISSETUGID
@@ -164,9 +165,13 @@ HAVE_UNCTRL_H	1
 HAVE_UNISTD_H
 HAVE_UNLINK
 HAVE_USE_DEFAULT_COLORS
+HAVE_USE_ENV	1
+HAVE_USE_EXTENDED_NAMES
 HAVE_USE_SCREEN
 HAVE_USE_WINDOW
 HAVE_VFSCANF
+HAVE_VIDPUTS	1
+HAVE_VID_PUTS	1
 HAVE_VSNPRINTF
 HAVE_VSSCANF
 HAVE_WCSRTOMBS
@@ -185,6 +190,7 @@ NCURSES_EXPANDED
 NCURSES_EXT_COLORS
 NCURSES_EXT_FUNCS
 NCURSES_NO_PADDING
+NCURSES_OSPEED_COMPAT
 NCURSES_PATHSEP	':'
 NCURSES_WIDECHAR
 NEED_PTEM_H
@@ -199,7 +205,6 @@ TERMPATH	"none"
 TIME_WITH_SYS_TIME
 TYPEOF_CHTYPE
 USE_COLORFGBG
-USE_DATABASE
 USE_GETCAP
 USE_GETCAP_CACHE
 USE_HARD_TABS
@@ -218,7 +223,6 @@ USE_SIGWINCH
 USE_STRING_HACKS
 USE_SYMLINKS
 USE_SYSMOUSE
-USE_TERMCAP
 USE_WEAK_SYMBOLS
 USE_WIDEC_SUPPORT
 USE_XMC_SUPPORT

@@ -1,6 +1,6 @@
-# $Id: Makefile.in,v 1.109 2011/09/24 15:13:44 nix Exp $
+# $Id: Makefile.in,v 1.114 2014/11/15 00:46:05 tom Exp $
 ##############################################################################
-# Copyright (c) 1998-2010,2011 Free Software Foundation, Inc.                #
+# Copyright (c) 1998-2013,2014 Free Software Foundation, Inc.                #
 #                                                                            #
 # Permission is hereby granted, free of charge, to any person obtaining a    #
 # copy of this software and associated documentation files (the "Software"), #
@@ -44,18 +44,25 @@ x		= @EXEEXT@
 o		= .@OBJEXT@
 
 MODEL		= ../@DFT_OBJ_SUBDIR@
+top_srcdir	= @top_srcdir@
 srcdir		= @srcdir@
 prefix		= @prefix@
 exec_prefix	= @exec_prefix@
+datarootdir	= @datarootdir@
+
 bindir		= @bindir@
 libdir		= @libdir@
 includedir	= @includedir@
+includesubdir	= @includesubdir@
 
 BINDIR		= $(DESTDIR)$(bindir)
 LIBDIR		= $(DESTDIR)$(libdir)
-INCLUDEDIR	= $(DESTDIR)$(includedir)
+INCLUDEDIR	= $(DESTDIR)$(includedir)$(includesubdir)
+
+PACKAGE		= @PACKAGE@
 
 LIBTOOL		= @LIBTOOL@
+LIBTOOL_OPTS	= @LIBTOOL_OPTS@
 LIBTOOL_CLEAN	= @LIB_CLEAN@
 LIBTOOL_COMPILE	= @LIB_COMPILE@
 LIBTOOL_LINK	= @LIB_LINK@
